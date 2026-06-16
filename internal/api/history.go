@@ -171,7 +171,7 @@ func validatedCustomRollbackPath(root, id string) (string, error) {
 	customRoot := filepath.Clean(filepath.Join(root, "custom"))
 	p := filepath.Clean(filepath.Join(customRoot, id+".yml"))
 	rel, err := filepath.Rel(customRoot, p)
-	if err != nil || rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) || strings.ContainsRune(rel, '\x00') {
+	if err != nil || rel == "." || historyRelEscapesBase(rel) || filepath.IsAbs(rel) || strings.ContainsRune(rel, '\x00') {
 		return "", errors.New("invalid rollback path")
 	}
 	return p, nil
@@ -220,4 +220,8 @@ func baseChange(c *gin.Context, h HistoryServices, id string, act rulehistory.Ac
 		actor = "api"
 	}
 	return rulehistory.Change{Actor: actor, Action: act, RuleID: id, Before: before, After: after, Diff: rulehistory.TextDiff(before, after), FilePath: path, ReloadSuccess: true, RemoteAddr: security.ClientIP(c.Request, h.TrustedProxies), UserAgent: c.Request.UserAgent()}
+}
+
+func historyRelEscapesBase(rel string) bool {
+	return rel == ".." || len(rel) > 3 && rel[:3] == ".."+string(os.PathSeparator)
 }

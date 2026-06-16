@@ -208,10 +208,18 @@ func ensurePathUnder(baseAbs, candidateAbs string) error {
 	if err != nil {
 		return fmt.Errorf("relative path check: %w", err)
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+	if relEscapesBase(rel) || filepath.IsAbs(rel) {
 		return fmt.Errorf("path %q escapes base %q", candidateAbs, baseAbs)
 	}
 	return nil
+}
+
+func relEscapesBase(rel string) bool {
+	return rel == ".." || len(rel) > 3 && rel[:3] == ".."+string(os.PathSeparator)
+}
+
+func isCommentLine(line string) bool {
+	return len(line) >= 1 && line[:1] == "#" || len(line) >= 2 && line[:2] == "//" || len(line) >= 1 && line[:1] == ";"
 }
 
 func safeJoinUnder(baseAbs string, elems ...string) (string, error) {
@@ -466,7 +474,7 @@ func Run(o Options) (*Report, error) {
 				}
 				continue
 			}
-			if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") || strings.HasPrefix(line, ";") {
+			if line == "" || isCommentLine(line) {
 				rep.BlankCommentSkipped++
 				continue
 			}

@@ -168,8 +168,12 @@ func ensureAPIPathUnder(baseAbs, candidateAbs string) error {
 	if err != nil {
 		return err
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+	if apiRelEscapesBase(rel) || filepath.IsAbs(rel) {
 		return fmt.Errorf("%q escapes %q", candidateAbs, baseAbs)
 	}
 	return nil
+}
+
+func apiRelEscapesBase(rel string) bool {
+	return rel == ".." || len(rel) > 3 && rel[:3] == ".."+string(os.PathSeparator)
 }

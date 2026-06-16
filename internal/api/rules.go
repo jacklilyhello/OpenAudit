@@ -193,7 +193,11 @@ func updateRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 		return
 	}
 	applyPatch(&rule, req.Patch)
-	nb, _ := yaml.Marshal(rule)
+	nb, err := yaml.Marshal(rule)
+	if err != nil {
+		bad(c, "invalid rule")
+		return
+	}
 	if err := os.WriteFile(p, nb, 0644); err != nil {
 		writeError(c, 500, "write_failed", err.Error(), nil)
 		return
@@ -290,9 +294,9 @@ func detectAction(before, after []byte) rulehistory.Action {
 	ae, be := a.IsEnabled(), b.IsEnabled()
 	a.Enabled = nil
 	b.Enabled = nil
-	ab, _ := yaml.Marshal(a)
-	bb, _ := yaml.Marshal(b)
-	if string(ab) == string(bb) && ae != be {
+	ab, errA := yaml.Marshal(a)
+	bb, errB := yaml.Marshal(b)
+	if errA == nil && errB == nil && string(ab) == string(bb) && ae != be {
 		if be {
 			return rulehistory.ActionEnable
 		}

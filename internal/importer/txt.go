@@ -3,21 +3,22 @@ package importer
 import (
 	"bufio"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 func ReadWordlist(path string) ([]string, error) {
-	f, err := os.Open(path)
+	cleaned := filepath.Clean(path)
+	f, err := os.Open(cleaned) // #nosec G304 -- legacy helper used with operator-provided local wordlist paths.
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 	var out []string
 	seen := map[string]bool{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") || strings.HasPrefix(line, ";") {
+		if line == "" || len(line) >= 1 && line[:1] == "#" || len(line) >= 2 && line[:2] == "//" || len(line) >= 1 && line[:1] == ";" {
 			continue
 		}
 		if !seen[line] {
@@ -25,5 +26,13 @@ func ReadWordlist(path string) ([]string, error) {
 			out = append(out, line)
 		}
 	}
-	return out, sc.Err()
+	scanErr := sc.Err()
+	closeErr := f.Close()
+	if scanErr != nil {
+		return nil, scanErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	return out, nil
 }
