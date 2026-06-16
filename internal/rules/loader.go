@@ -3,8 +3,9 @@ package rules
 import (
 	"fmt"
 	"github.com/openaudit/openaudit/internal/risk"
+	"github.com/openaudit/openaudit/internal/safepath"
 	"gopkg.in/yaml.v3"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -12,33 +13,28 @@ import (
 
 func Load(root string) (Set, error) {
 	var set Set
-	walkRoot, rootAbs, err := validateRulesRoot(root)
+	safeRoot, err := safepath.NewRoot(root, safepath.RequireExistingDir())
 	if err != nil {
 		return set, err
 	}
-	err = filepath.WalkDir(walkRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("%s: symlink rejected", path)
-		}
-		if d.IsDir() || !(strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".yaml")) {
+	walkRoot := filepath.Clean(root)
+	err = safeRoot.Walk(func(path safepath.Path, d fs.DirEntry) error {
+		if d.IsDir() || !(strings.HasSuffix(path.String(), ".yml") || strings.HasSuffix(path.String(), ".yaml")) {
 			return nil
 		}
-		fileAbs, err := validatedRuleFilePath(rootAbs, path)
+		rel, err := safeRoot.Rel(path)
 		if err != nil {
 			return err
 		}
-		b, err := readValidatedRuleFile(rootAbs, fileAbs)
+		b, err := safeRoot.ReadFile(path)
 		if err != nil {
 			return err
 		}
 		var r Rule
 		if err := yaml.Unmarshal(b, &r); err != nil {
-			return fmt.Errorf("%s: %w", path, err)
+			return fmt.Errorf("%s: %w", path.String(), err)
 		}
-		r.Path = path
+		r.Path = filepath.Join(walkRoot, rel)
 		if err := NormalizeAndValidate(&r); err != nil {
 			return err
 		}
@@ -61,91 +57,6 @@ func Load(root string) (Set, error) {
 		return nil
 	})
 	return set, err
-}
-
-func validateRulesRoot(root string) (string, string, error) {
-	if root == "" {
-		return "", "", fmt.Errorf("rules root is empty")
-	}
-	if strings.ContainsRune(root, '\x00') {
-		return "", "", fmt.Errorf("rules root contains NUL")
-	}
-	walkRoot := filepath.Clean(root)
-	rootAbs, err := filepath.Abs(walkRoot)
-	if err != nil {
-		return "", "", err
-	}
-	rootAbs = filepath.Clean(rootAbs)
-	info, err := os.Lstat(rootAbs)
-	if err != nil {
-		return "", "", err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return "", "", fmt.Errorf("%s: symlink rejected", rootAbs)
-	}
-	if !info.IsDir() {
-		return "", "", fmt.Errorf("%s: not a directory", rootAbs)
-	}
-	return walkRoot, rootAbs, nil
-}
-
-func validatedRuleFilePath(rootAbs, path string) (string, error) {
-	fileAbs, err := filepath.Abs(filepath.Clean(path))
-	if err != nil {
-		return "", err
-	}
-	fileAbs = filepath.Clean(fileAbs)
-	if err := ensureRulePathUnder(rootAbs, fileAbs); err != nil {
-		return "", err
-	}
-	return fileAbs, nil
-}
-
-func readValidatedRuleFile(rootAbs, fileAbs string) ([]byte, error) {
-	if err := ensureRulePathUnder(rootAbs, fileAbs); err != nil {
-		return nil, err
-	}
-	info, err := os.Lstat(fileAbs)
-	if err != nil {
-		return nil, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return nil, fmt.Errorf("%s: symlink rejected", fileAbs)
-	}
-	if info.IsDir() {
-		return nil, fmt.Errorf("%s: is a directory", fileAbs)
-	}
-	// #nosec G304,G122 -- fileAbs is absolute, filepath.Rel-constrained under the validated rules rootAbs, and symlinks are rejected with Lstat immediately before reading.
-	return os.ReadFile(fileAbs)
-}
-
-func ensureRulePathUnder(rootAbs, fileAbs string) error {
-	if !filepath.IsAbs(rootAbs) || !filepath.IsAbs(fileAbs) {
-		return fmt.Errorf("rule path validation requires absolute paths")
-	}
-	rel, err := filepath.Rel(filepath.Clean(rootAbs), filepath.Clean(fileAbs))
-	if err != nil {
-		return err
-	}
-	if ruleLoaderRelEscapesBase(rel) || filepath.IsAbs(rel) {
-		return fmt.Errorf("%q escapes %q", fileAbs, rootAbs)
-	}
-	return nil
-}
-
-func ruleLoaderRelEscapesBase(rel string) bool {
-	if rel == "." {
-		return false
-	}
-	if filepath.IsAbs(rel) {
-		return true
-	}
-	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
 }
 
 func NormalizeAndValidate(r *Rule) error {

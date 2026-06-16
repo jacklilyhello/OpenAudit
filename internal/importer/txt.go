@@ -2,14 +2,16 @@ package importer
 
 import (
 	"bufio"
-	"os"
-	"path/filepath"
+	"github.com/openaudit/openaudit/internal/safepath"
 	"strings"
 )
 
 func ReadWordlist(path string) ([]string, error) {
-	cleaned := filepath.Clean(path)
-	f, err := os.Open(cleaned) // #nosec G304 -- legacy helper used with operator-provided local wordlist paths.
+	root, target, err := safepath.NewFileTarget(path)
+	if err != nil {
+		return nil, err
+	}
+	f, err := root.OpenRead(target)
 	if err != nil {
 		return nil, err
 	}

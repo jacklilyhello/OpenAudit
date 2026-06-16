@@ -2,26 +2,35 @@ package logstore
 
 import (
 	"encoding/json"
+	"github.com/openaudit/openaudit/internal/safepath"
 	"os"
-	"path/filepath"
 	"sync"
 )
 
 type JSONL struct {
 	mu   sync.Mutex
-	path string
+	root safepath.Root
+	path safepath.Path
 }
 
 func NewJSONL(path string) (*JSONL, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+	root, target, err := safepath.NewFileTarget(path)
+	if err != nil {
 		return nil, err
 	}
-	return &JSONL{path: path}, nil
+	parent, err := root.Parent(target)
+	if err != nil {
+		return nil, err
+	}
+	if err := root.MkdirAll(parent); err != nil {
+		return nil, err
+	}
+	return &JSONL{root: root, path: target}, nil
 }
 func (j *JSONL) Append(e Entry) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	f, err := os.OpenFile(j.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	f, err := j.root.OpenFile(j.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, safepath.RuntimeFilePerm)
 	if err != nil {
 		return err
 	}

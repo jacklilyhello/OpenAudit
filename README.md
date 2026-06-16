@@ -124,3 +124,7 @@ OpenAudit includes local file-backed rule change history for API-managed custom 
 ## Phase 8 external ruleset imports
 
 OpenAudit supports committed demo rules under `data/` and operator-managed external rulesets imported into `data/imported/`. Large/private sources such as Sensitive-lexicon should be cloned into `external-rules/` and imported locally; do not commit generated private rulesets. See [IMPORTING.md](IMPORTING.md).
+
+## Phase 9 filesystem safety
+
+High-risk filesystem operations now use a shared `internal/safepath` abstraction. Import paths, generated reports, custom rule writes, rollback restores, rule history, import batch history, audit logs, and rule loading are constrained under validated roots with symlink rejection where relevant. Runtime directories use `0750`, and generated/runtime files use `0600`. See [SECURITY.md](SECURITY.md), [IMPORTING.md](IMPORTING.md), and [API.md](API.md).

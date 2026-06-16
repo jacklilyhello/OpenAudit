@@ -73,6 +73,8 @@ Mount or persist:
 - `storage/` for audit logs and runtime state.
 - config files from `/etc/openaudit` or secret-managed locations.
 
+OpenAudit-created runtime directories use `0750`, and generated/runtime files use `0600`. This applies to audit logs, rule history JSONL files, import batch files, generated/imported rules, import reports, and atomic temp files. Symlink roots for high-risk import and runtime write paths are rejected.
+
 ## Backup and retention
 
 Back up `data/` if it contains local rule edits and `storage/` if audit history matters. JSONL logs can grow over time; configure OS log rotation or application retention policies. Do not back up or publish secrets in config snapshots.
@@ -100,3 +102,5 @@ Back up `storage/rule-history/` with the rule data directory. Custom-rule rollba
 ## Imported rules operations
 
 Back up `data/imported/`, `storage/imports/`, and `storage/rule-history/import-batches.jsonl` with other operational state. Keep `external-rules/` operator-managed and out of git; it may contain large or private upstream rulesets.
+
+For local scanner review, run `$(go env GOPATH)/bin/gosec ./...`. CodeQL may still require manual review for path-flow findings that pass through `internal/safepath`; review those against the documented root-constrained path invariant instead of relying on scanner output alone.
