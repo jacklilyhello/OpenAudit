@@ -1,0 +1,25 @@
+server:
+  addr: ":8080"
+  read_timeout_seconds: 10
+  write_timeout_seconds: 30
+rules:
+  data_dir: "./data"
+  auto_reload: false
+admin:
+  enabled: true
+  path: "/admin"
+security:
+  api_key_enabled: false
+  api_keys: ["dev-key"]
+  protected_paths: ["/rules/reload", "/rules/create", "/rules/update", "/rules/delete", "/logs"]
+  allow_admin_without_key: true
+audit_log:
+  enabled: true
+  path: "./storage/audit.log"
+  max_entries: 1000
+  log_request_text: true
+  log_hits: true
+limits:
+  max_text_runes: 10000
+  max_batch_items: 100
+  max_hits: 100
