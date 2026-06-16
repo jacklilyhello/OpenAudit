@@ -55,3 +55,15 @@ func TestProductionWildcardCORSFails(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCleanConfigPathRejectsTraversal(t *testing.T) {
+	if _, err := cleanConfigPath("../config.yml"); err == nil {
+		t.Fatal("expected traversal path to fail")
+	}
+}
+
+func TestCleanConfigPathRejectsNUL(t *testing.T) {
+	if _, err := cleanConfigPath("config\x00.yml"); err == nil {
+		t.Fatal("expected NUL path to fail")
+	}
+}

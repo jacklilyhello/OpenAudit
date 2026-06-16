@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -18,7 +19,12 @@ func Load(path string) (Config, error) {
 		path = os.Getenv("OPENAUDIT_CONFIG")
 	}
 	if path != "" {
-		if b, err := os.ReadFile(path); err == nil {
+		configPath, err := cleanConfigPath(path)
+		if err != nil {
+			return cfg, err
+		}
+		// #nosec G304 -- configPath is an operator-supplied startup config path, not request-controlled input; cleanConfigPath validates it before reading.
+		if b, err := os.ReadFile(configPath); err == nil {
 			if err := yaml.Unmarshal(b, &cfg); err != nil {
 				return cfg, err
 			}
@@ -30,6 +36,23 @@ func Load(path string) (Config, error) {
 	applyEnv(&cfg)
 	return cfg, Validate(cfg)
 }
+func cleanConfigPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", nil
+	}
+	if strings.ContainsRune(path, '\x00') {
+		return "", errors.New("config path contains NUL byte")
+	}
+	cleaned := filepath.Clean(path)
+	for _, part := range strings.Split(cleaned, string(filepath.Separator)) {
+		if part == ".." {
+			return "", fmt.Errorf("config path %q contains parent directory traversal", path)
+		}
+	}
+	return cleaned, nil
+}
+
 func applyEnv(c *Config) {
 	if v := strings.TrimSpace(os.Getenv("OPENAUDIT_ENV")); v != "" {
 		c.App.Env = v
