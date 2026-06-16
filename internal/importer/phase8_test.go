@@ -90,3 +90,78 @@ func TestPathSafety(t *testing.T) {
 		t.Fatal("symlink accepted")
 	}
 }
+
+func TestImporterRejectsSymlinkInputRoot(t *testing.T) {
+	dir := t.TempDir()
+	realRoot := filepath.Join(dir, "real")
+	if err := os.MkdirAll(realRoot, 0750); err != nil {
+		t.Fatal(err)
+	}
+	linkRoot := filepath.Join(dir, "link")
+	if err := os.Symlink(realRoot, linkRoot); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := Run(Options{Input: linkRoot, Output: filepath.Join(dir, "out")}); err == nil {
+		t.Fatal("symlink input root accepted")
+	}
+}
+
+func TestImporterRejectsOutputTraversal(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in")
+	if err := os.MkdirAll(in, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(in, "words.txt"), []byte("x\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(Options{Input: in, Output: dir + string(os.PathSeparator) + ".." + string(os.PathSeparator) + "evil"}); err == nil {
+		t.Fatal("output traversal accepted")
+	}
+}
+
+func TestWriteReportUnderAndPermissions(t *testing.T) {
+	dir := t.TempDir()
+	reportRoot := filepath.Join(dir, "reports")
+	rep := &Report{BatchID: "batch_1", Status: "ok"}
+	outside := filepath.Join(dir, "outside.json")
+	if err := WriteReportUnder(rep, reportRoot, outside, "json"); err == nil {
+		t.Fatal("report outside root accepted")
+	}
+	inside := filepath.Join(reportRoot, "inside.json")
+	if err := WriteReportUnder(rep, reportRoot, inside, "json"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(inside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Fatalf("report mode = %o want 0600", got)
+	}
+}
+
+func TestGeneratedYAMLUses0600(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in")
+	if err := os.MkdirAll(in, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(in, "words.txt"), []byte("x\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Run(Options{Input: in, Output: filepath.Join(dir, "out")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.OutputFiles) != 1 {
+		t.Fatalf("output files = %v", rep.OutputFiles)
+	}
+	info, err := os.Stat(rep.OutputFiles[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Fatalf("rule mode = %o want 0600", got)
+	}
+}

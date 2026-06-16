@@ -40,7 +40,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if o.ReportPath == "" && !o.DryRun {
-		o.ReportPath = filepath.Join(*reportDir, "import_"+rep.BatchID+".json")
+		o.ReportPath = filepath.Join(*reportDir, importer.ReportFileName(rep.BatchID))
 	}
 	if o.ReportPath != "" {
 		if e := importer.WriteReport(rep, o.ReportPath, o.ReportFormat); e != nil {

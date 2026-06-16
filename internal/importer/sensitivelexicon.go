@@ -61,7 +61,6 @@ type ReloadResult struct {
 	StatusCode int    `json:"status_code,omitempty"`
 	Error      string `json:"error,omitempty"`
 }
-type item struct{ Cat, Typ, Val string }
 
 var safeID = regexp.MustCompile(`[^a-zA-Z0-9_]+`)
 var CategoryMap = map[string]string{"政治": "political", "涉政": "political", "色情": "porn", "成人": "porn", "赌博": "gambling", "博彩": "gambling", "诈骗": "scam", "欺诈": "scam", "毒品": "drugs", "违禁": "prohibited", "广告": "spam", "垃圾": "spam", "网址": "domain", "域名": "domain", "链接": "url", "辱骂": "abuse", "暴恐": "violence", "恐怖": "violence", "枪支": "weapons", "武器": "weapons", "黑产": "cybercrime", "引流": "spam", "宗教": "religion", "民生": "public_affairs", "其他": "other"}
@@ -157,15 +156,237 @@ func InferType(path, line, override string) string {
 	}
 	return "keyword"
 }
-func validatePath(p string) (string, error) {
-	if strings.TrimSpace(p) == "" {
+func cleanUserPath(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
 		return "", errors.New("path is empty")
 	}
 	if strings.ContainsRune(p, 0) {
 		return "", errors.New("path contains NUL")
 	}
-	return filepath.Clean(p), nil
+	if containsParentTraversal(p) {
+		return "", errors.New("path contains parent traversal")
+	}
+	cleaned := filepath.Clean(p)
+	if cleaned == "." {
+		return "", errors.New("path resolves to current directory")
+	}
+	if containsParentTraversal(cleaned) {
+		return "", errors.New("path contains parent traversal")
+	}
+	return cleaned, nil
 }
+
+func containsParentTraversal(p string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(p), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func absCleanPath(p string) (string, error) {
+	cleaned, err := cleanUserPath(p)
+	if err != nil {
+		return "", err
+	}
+	abs, err := filepath.Abs(cleaned)
+	if err != nil {
+		return "", fmt.Errorf("absolute path: %w", err)
+	}
+	return filepath.Clean(abs), nil
+}
+
+func ensurePathUnder(baseAbs, candidateAbs string) error {
+	if !filepath.IsAbs(baseAbs) || !filepath.IsAbs(candidateAbs) {
+		return errors.New("path safety check requires absolute paths")
+	}
+	baseAbs = filepath.Clean(baseAbs)
+	candidateAbs = filepath.Clean(candidateAbs)
+	rel, err := filepath.Rel(baseAbs, candidateAbs)
+	if err != nil {
+		return fmt.Errorf("relative path check: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+		return fmt.Errorf("path %q escapes base %q", candidateAbs, baseAbs)
+	}
+	return nil
+}
+
+func safeJoinUnder(baseAbs string, elems ...string) (string, error) {
+	if !filepath.IsAbs(baseAbs) {
+		return "", errors.New("safe join base must be absolute")
+	}
+	cleanElems := make([]string, 0, len(elems))
+	for _, elem := range elems {
+		if strings.TrimSpace(elem) == "" {
+			return "", errors.New("empty path component")
+		}
+		if strings.ContainsRune(elem, 0) {
+			return "", errors.New("path component contains NUL")
+		}
+		if filepath.IsAbs(elem) {
+			return "", errors.New("absolute path component rejected")
+		}
+		if containsParentTraversal(elem) {
+			return "", errors.New("path component contains parent traversal")
+		}
+		cleaned := filepath.Clean(elem)
+		for _, part := range strings.Split(filepath.ToSlash(cleaned), "/") {
+			if part == ".." {
+				return "", errors.New("path component contains parent traversal")
+			}
+		}
+		cleanElems = append(cleanElems, cleaned)
+	}
+	joined := filepath.Join(append([]string{baseAbs}, cleanElems...)...)
+	joinedAbs, err := filepath.Abs(joined)
+	if err != nil {
+		return "", fmt.Errorf("absolute joined path: %w", err)
+	}
+	joinedAbs = filepath.Clean(joinedAbs)
+	if err := ensurePathUnder(baseAbs, joinedAbs); err != nil {
+		return "", err
+	}
+	return joinedAbs, nil
+}
+
+func validateInputRoot(input string) (string, error) {
+	rootAbs, err := absCleanPath(input)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Lstat(rootAbs)
+	if err != nil {
+		return "", fmt.Errorf("stat input root: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("input root symlink rejected")
+	}
+	if !info.IsDir() {
+		return "", errors.New("input root is not a directory")
+	}
+	return rootAbs, nil
+}
+
+func validateOutputRoot(output string, create bool) (string, error) {
+	rootAbs, err := absCleanPath(output)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Lstat(rootAbs)
+	if err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("output root symlink rejected")
+		}
+		if !info.IsDir() {
+			return "", errors.New("output root is not a directory")
+		}
+		return rootAbs, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("stat output root: %w", err)
+	}
+	if create {
+		if err := os.MkdirAll(rootAbs, 0750); err != nil {
+			return "", fmt.Errorf("create output root: %w", err)
+		}
+	}
+	return rootAbs, nil
+}
+
+func validateReportPath(reportPath string, allowedReportRoot string) (string, error) {
+	if strings.TrimSpace(reportPath) == "" {
+		return "", nil
+	}
+	reportAbs, err := absCleanPath(reportPath)
+	if err != nil {
+		return "", err
+	}
+	if allowedReportRoot != "" {
+		rootAbs, err := absCleanPath(allowedReportRoot)
+		if err != nil {
+			return "", fmt.Errorf("report root: %w", err)
+		}
+		if info, err := os.Lstat(rootAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("report root symlink rejected")
+		}
+		if err := os.MkdirAll(rootAbs, 0750); err != nil {
+			return "", fmt.Errorf("create report root: %w", err)
+		}
+		if info, err := os.Lstat(rootAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("report root symlink rejected")
+		}
+		if err := ensurePathUnder(rootAbs, reportAbs); err != nil {
+			return "", err
+		}
+	}
+	parent := filepath.Dir(reportAbs)
+	if info, err := os.Lstat(parent); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("report parent symlink rejected")
+	}
+	if err := os.MkdirAll(parent, 0750); err != nil {
+		return "", fmt.Errorf("create report directory: %w", err)
+	}
+	return reportAbs, nil
+}
+
+func ReportFileName(batchID string) string {
+	id := strings.ToLower(safeID.ReplaceAllString(batchID, "_"))
+	id = strings.Trim(id, "_")
+	if id == "" {
+		id = "import_report"
+	}
+	return "import_" + id + ".json"
+}
+
+func writeFile0600Atomic(path string, data []byte) error {
+	parent := filepath.Dir(path)
+	if err := os.MkdirAll(parent, 0750); err != nil {
+		return fmt.Errorf("create parent directory: %w", err)
+	}
+	tmp, err := os.OpenFile(filepath.Join(parent, "."+filepath.Base(path)+".tmp"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 -- path is an already-validated absolute destination; temp stays in the same validated directory.
+	if errors.Is(err, os.ErrExist) {
+		if removeErr := os.Remove(filepath.Join(parent, "."+filepath.Base(path)+".tmp")); removeErr != nil {
+			return fmt.Errorf("remove stale temp file: %w", removeErr)
+		}
+		tmp, err = os.OpenFile(filepath.Join(parent, "."+filepath.Base(path)+".tmp"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 -- path is an already-validated absolute destination; temp stays in the same validated directory.
+	}
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		closeErr := tmp.Close()
+		if closeErr != nil {
+			return fmt.Errorf("write temp file: %w; close temp file: %v", err, closeErr)
+		}
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	if err := tmp.Chmod(0600); err != nil {
+		closeErr := tmp.Close()
+		if closeErr != nil {
+			return fmt.Errorf("chmod temp file: %w; close temp file: %v", err, closeErr)
+		}
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+	cleanup = false
+	return nil
+}
+
 func ImportSensitiveLexicon(o Options) (Result, error) {
 	rep, err := Run(o)
 	r := Result{}
@@ -182,25 +403,25 @@ func ImportSensitiveLexicon(o Options) (Result, error) {
 func Run(o Options) (*Report, error) {
 	defaults(&o)
 	start := time.Now()
-	in, err := validatePath(o.Input)
+	inputRootAbs, err := validateInputRoot(o.Input)
 	if err != nil {
 		return nil, err
 	}
-	out, err := validatePath(o.Output)
+	outputRootAbs, err := validateOutputRoot(o.Output, !o.DryRun)
 	if err != nil {
 		return nil, err
 	}
-	rep := &Report{BatchID: NewBatchID(), Timestamp: time.Now().UTC(), Source: o.Source, InputPath: in, OutputPath: out, DryRun: o.DryRun, ReloadAfterImport: o.ReloadAfterImport, Status: "ok", Categories: map[string]int{}, RuleTypes: map[string]int{}}
+	displayInput, _ := cleanUserPath(o.Input)
+	displayOutput, _ := cleanUserPath(o.Output)
+	rep := &Report{BatchID: NewBatchID(), Timestamp: time.Now().UTC(), Source: o.Source, InputPath: displayInput, OutputPath: displayOutput, DryRun: o.DryRun, ReloadAfterImport: o.ReloadAfterImport, Status: "ok", Categories: map[string]int{}, RuleTypes: map[string]int{}}
 	if o.DryRun {
 		rep.Status = "dry_run"
 	}
-	rootAbs, _ := filepath.Abs(in)
-	outAbs, _ := filepath.Abs(out)
 	groups := map[string][]string{}
 	seenBatch := map[string]bool{}
-	err = filepath.WalkDir(in, func(path string, d os.DirEntry, e error) error {
-		if e != nil {
-			return e
+	err = filepath.WalkDir(inputRootAbs, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 		if d.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink input path rejected: %s", path)
@@ -212,18 +433,24 @@ func Run(o Options) (*Report, error) {
 		if ext != ".txt" && ext != ".list" && ext != ".csv" {
 			return nil
 		}
-		abs, _ := filepath.Abs(path)
-		if !strings.HasPrefix(abs, rootAbs+string(os.PathSeparator)) && abs != rootAbs {
-			return fmt.Errorf("input escaped root: %s", path)
+		fileAbs, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("absolute input file path: %w", err)
+		}
+		fileAbs = filepath.Clean(fileAbs)
+		if err := ensurePathUnder(inputRootAbs, fileAbs); err != nil {
+			return err
 		}
 		rep.FilesScanned++
-		rel, _ := filepath.Rel(in, path)
-		cat := inferCategory(o.Category, rel)
-		f, er := os.Open(path)
-		if er != nil {
-			return er
+		rel, err := filepath.Rel(inputRootAbs, fileAbs)
+		if err != nil {
+			return fmt.Errorf("relative input file path: %w", err)
 		}
-		defer f.Close()
+		cat := inferCategory(o.Category, rel)
+		f, err := os.Open(fileAbs) // #nosec G304 -- fileAbs is constrained under validated inputRootAbs and symlinks are rejected above.
+		if err != nil {
+			return err
+		}
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 1024), o.MaxLineRunes*8+1024)
 		seenFile := map[string]bool{}
@@ -234,6 +461,7 @@ func Run(o Options) (*Report, error) {
 				rep.InvalidLines++
 				rep.Warnings = append(rep.Warnings, "invalid line skipped in "+rel)
 				if o.Strict {
+					_ = f.Close()
 					return errors.New("invalid line in " + rel)
 				}
 				continue
@@ -249,18 +477,20 @@ func Run(o Options) (*Report, error) {
 				} else {
 					rep.InvalidLines++
 					if o.Strict {
+						_ = f.Close()
 						return errors.New("invalid domain in " + rel)
 					}
 					continue
 				}
 			}
 			if typ == "regex" {
-				if _, er := regexp.Compile(line); er != nil {
+				if _, err := regexp.Compile(line); err != nil {
 					rep.InvalidRegex++
 					rep.InvalidLines++
 					rep.Warnings = append(rep.Warnings, "invalid regex skipped in "+rel+": "+line)
 					if o.Strict {
-						return er
+						_ = f.Close()
+						return err
 					}
 					continue
 				}
@@ -295,7 +525,15 @@ func Run(o Options) (*Report, error) {
 				rep.RegexRead++
 			}
 		}
-		return sc.Err()
+		scanErr := sc.Err()
+		closeErr := f.Close()
+		if scanErr != nil {
+			return scanErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		return nil
 	})
 	if err != nil {
 		rep.Status = "failed"
@@ -309,6 +547,8 @@ func Run(o Options) (*Report, error) {
 	sort.Strings(keys)
 	for _, k := range keys {
 		parts := strings.Split(k, "/")
+		category := SanitizeCategory(parts[0])
+		ruleType := SanitizeCategory(parts[1])
 		vals := groups[k]
 		sort.Strings(vals)
 		for i, start := 1, 0; start < len(vals); i, start = i+1, start+o.MaxKeywordsPerFile {
@@ -316,21 +556,27 @@ func Run(o Options) (*Report, error) {
 			if end > len(vals) {
 				end = len(vals)
 			}
-			id := strings.ToLower(safeID.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%03d", o.Source, parts[0], parts[1], i), "_"))
-			rel := filepath.Join(SanitizeCategory(o.Source), parts[0], parts[1], id+".yml")
-			dst := filepath.Join(out, rel)
-			dstAbs, _ := filepath.Abs(dst)
-			if !strings.HasPrefix(dstAbs, outAbs+string(os.PathSeparator)) {
-				return rep, errors.New("output path escapes output dir")
+			sourceComponent := SanitizeCategory(o.Source)
+			id := strings.ToLower(safeID.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%03d", sourceComponent, category, ruleType, i), "_"))
+			dst, err := safeJoinUnder(outputRootAbs, sourceComponent, category, ruleType, id+".yml")
+			if err != nil {
+				return rep, err
+			}
+			if err := ensurePathUnder(outputRootAbs, dst); err != nil {
+				return rep, err
 			}
 			rep.OutputFiles = append(rep.OutputFiles, dst)
 			if !o.DryRun {
-				if err := os.MkdirAll(filepath.Dir(dst), 0750); err != nil {
+				parent := filepath.Dir(dst)
+				if err := ensurePathUnder(outputRootAbs, parent); err != nil {
+					return rep, err
+				}
+				if err := os.MkdirAll(parent, 0750); err != nil {
 					return rep, err
 				}
 				en := true
-				rr := rules.Rule{ID: id, Type: parts[1], Category: parts[0], RiskLevel: o.Risk, Action: o.Action, Score: 0, Description: "Imported from Sensitive-lexicon-compatible ruleset.", Source: o.Source, Tags: []string{"imported", o.Source, parts[0], parts[1]}, Enabled: &en}
-				switch parts[1] {
+				rr := rules.Rule{ID: id, Type: ruleType, Category: category, RiskLevel: o.Risk, Action: o.Action, Score: 0, Description: "Imported from Sensitive-lexicon-compatible ruleset.", Source: o.Source, Tags: []string{"imported", o.Source, category, ruleType}, Enabled: &en}
+				switch ruleType {
 				case "keyword":
 					rr.Keywords = vals[start:end]
 				case "domain":
@@ -338,8 +584,11 @@ func Run(o Options) (*Report, error) {
 				case "regex":
 					rr.Patterns = vals[start:end]
 				}
-				b, _ := yaml.Marshal(rr)
-				if err := os.WriteFile(dst, b, 0640); err != nil {
+				b, err := yaml.Marshal(rr)
+				if err != nil {
+					return rep, err
+				}
+				if err := writeFile0600Atomic(dst, b); err != nil {
 					return rep, err
 				}
 			}
@@ -354,6 +603,7 @@ func Run(o Options) (*Report, error) {
 	rep.DurationMS = time.Since(start).Milliseconds()
 	return rep, nil
 }
+
 func callReload(url, key string) *ReloadResult {
 	rr := &ReloadResult{Attempted: true}
 	c := http.Client{Timeout: 5 * time.Second}
@@ -370,8 +620,12 @@ func callReload(url, key string) *ReloadResult {
 		rr.Error = err.Error()
 		return rr
 	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		rr.Error = err.Error()
+	}
+	if err := resp.Body.Close(); err != nil && rr.Error == "" {
+		rr.Error = err.Error()
+	}
 	rr.StatusCode = resp.StatusCode
 	if resp.StatusCode >= 300 {
 		rr.Error = resp.Status
@@ -379,21 +633,25 @@ func callReload(url, key string) *ReloadResult {
 	return rr
 }
 func WriteReport(rep *Report, path, format string) error {
+	return WriteReportUnder(rep, "", path, format)
+}
+
+func WriteReportUnder(rep *Report, reportRoot, path, format string) error {
 	if path == "" {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+	validatedPath, err := validateReportPath(path, reportRoot)
+	if err != nil {
 		return err
 	}
 	var b []byte
 	if format == "markdown" {
 		b = []byte(fmt.Sprintf("# Import %s\n\nStatus: %s\nFiles scanned: %d\nLines read: %d\nDuplicates removed: %d\n", rep.BatchID, rep.Status, rep.FilesScanned, rep.LinesRead, rep.DuplicatesRemoved))
 	} else {
-		var err error
 		b, err = json.MarshalIndent(rep, "", "  ")
 		if err != nil {
 			return err
 		}
 	}
-	return os.WriteFile(path, b, 0640)
+	return writeFile0600Atomic(validatedPath, b)
 }
