@@ -248,3 +248,12 @@ Returns one import batch record.
 ### `GET /rules/changes/stats`
 
 Returns aggregate rule change counts by action, actor, and source plus recent changes.
+
+## External import APIs
+
+Management endpoints are protected by the API-key middleware in production:
+
+* `POST /imports/preview` previews an import and returns `{ "ok": true, "preview": {...} }` without writing rule YAML.
+* `POST /imports/run` writes imported rules, writes a report, optionally records history/reloads, and returns `{ "ok": true, "batch_id": "...", "report": {...}, "reload": {...} }`.
+
+Request fields include `input_path`, `output_path`, `source`, `type` (`auto`, `keyword`, `domain`, `regex`), `category`, `risk_level`, `action`, `strict`, `max_keywords_per_file`, plus `reload_after_import` and `record_history` for run. Unsafe empty/NUL/escaping paths and invalid strict imports return `400` with `ok:false`.

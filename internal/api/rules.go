@@ -125,10 +125,79 @@ type updateReq struct {
 }
 
 func customPath(root, id string) (string, error) {
-	if strings.Contains(id, "/") || strings.Contains(id, "..") {
+	return safeRulePathUnderCustomRoot(root, id)
+}
+
+func safeRulePathUnderCustomRoot(root, id string) (string, error) {
+	if err := validateCustomRuleID(id); err != nil {
+		return "", err
+	}
+	customRoot := filepath.Clean(filepath.Join(root, "custom"))
+	p := filepath.Clean(filepath.Join(customRoot, id+".yml"))
+	rel, err := filepath.Rel(customRoot, p)
+	if err != nil || rel == "." || ruleRelEscapesBase(rel) || filepath.IsAbs(rel) || strings.ContainsRune(rel, '\x00') {
 		return "", os.ErrPermission
 	}
-	return filepath.Join(root, "custom", id+".yml"), nil
+	return p, nil
+}
+
+func validateCustomRuleID(id string) error {
+	if id == "" || strings.ContainsRune(id, '\x00') || filepath.IsAbs(id) || strings.Contains(id, "/") || strings.Contains(id, "\\") || strings.Contains(id, "..") {
+		return os.ErrPermission
+	}
+	return nil
+}
+
+func validateCustomRuleFileHint(file string) error {
+	if file == "" {
+		return nil
+	}
+	if strings.ContainsRune(file, '\x00') || filepath.IsAbs(file) || hasRuleParentTraversal(file) {
+		return os.ErrPermission
+	}
+	return nil
+}
+
+func hasRuleParentTraversal(p string) bool {
+	p = strings.ReplaceAll(filepath.ToSlash(p), "\\", "/")
+	for _, part := range strings.Split(p, "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func ruleRelEscapesBase(rel string) bool {
+	if rel == "." {
+		return false
+	}
+	if filepath.IsAbs(rel) {
+		return true
+	}
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func readCustomRuleFile(p string) ([]byte, error) {
+	// #nosec G304 -- p is produced by safeRulePathUnderCustomRoot and constrained with filepath.Rel to the API-managed custom rules directory.
+	return os.ReadFile(p)
+}
+
+func writeCustomRuleFile(p string, b []byte) error {
+	if err := os.MkdirAll(filepath.Dir(p), 0750); err != nil {
+		return err
+	}
+	// #nosec G304 -- p is produced by safeRulePathUnderCustomRoot and constrained with filepath.Rel to the API-managed custom rules directory.
+	return os.WriteFile(p, b, 0600)
+}
+
+func restoreCustomRuleFile(p string, b []byte) error {
+	return writeCustomRuleFile(p, b)
 }
 func createRule(c *gin.Context, e *engine.Engine, h HistoryServices) {
 	var req createReq
@@ -136,7 +205,7 @@ func createRule(c *gin.Context, e *engine.Engine, h HistoryServices) {
 		bad(c, err.Error())
 		return
 	}
-	if strings.Contains(req.File, "..") {
+	if err := validateCustomRuleFileHint(req.File); err != nil {
 		writeError(c, 400, "invalid_request", "path traversal rejected", nil)
 		return
 	}
@@ -149,11 +218,8 @@ func createRule(c *gin.Context, e *engine.Engine, h HistoryServices) {
 		writeError(c, 409, "conflict", "rule already exists", nil)
 		return
 	}
-	old := []byte(nil)
 	if b, err := yaml.Marshal(req.Rule); err == nil {
-		_ = old
-		os.MkdirAll(filepath.Dir(p), 0755)
-		if err := os.WriteFile(p, b, 0644); err != nil {
+		if err := writeCustomRuleFile(p, b); err != nil {
 			writeError(c, 500, "write_failed", err.Error(), nil)
 			return
 		}
@@ -180,7 +246,7 @@ func updateRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 		bad(c, "invalid rule id")
 		return
 	}
-	b, err := os.ReadFile(p)
+	b, err := readCustomRuleFile(p)
 	if err != nil {
 		writeError(c, 400, "invalid_request", "only custom API-managed rules can be updated or deleted in Phase 4", nil)
 		return
@@ -193,14 +259,24 @@ func updateRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 		return
 	}
 	applyPatch(&rule, req.Patch)
-	nb, _ := yaml.Marshal(rule)
-	if err := os.WriteFile(p, nb, 0644); err != nil {
+	nb, err := yaml.Marshal(rule)
+	if err != nil {
+		bad(c, "invalid rule")
+		return
+	}
+	if err := writeCustomRuleFile(p, nb); err != nil {
 		writeError(c, 500, "write_failed", err.Error(), nil)
 		return
 	}
 	if err := e.Reload(); err != nil {
-		_ = os.WriteFile(p, b, 0644)
-		_ = e.Reload()
+		if restoreErr := restoreCustomRuleFile(p, b); restoreErr != nil {
+			writeError(c, 400, "reload_failed", err.Error()+"; restore failed: "+restoreErr.Error(), nil)
+			return
+		}
+		if restoreReloadErr := e.Reload(); restoreReloadErr != nil {
+			writeError(c, 400, "reload_failed", err.Error()+"; restore reload failed: "+restoreReloadErr.Error(), nil)
+			return
+		}
 		writeError(c, 400, "reload_failed", err.Error(), nil)
 		return
 	}
@@ -256,7 +332,7 @@ func deleteRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 		bad(c, "invalid rule id")
 		return
 	}
-	b, err := os.ReadFile(p)
+	b, err := readCustomRuleFile(p)
 	if err != nil {
 		writeError(c, 400, "invalid_request", "only custom API-managed rules can be updated or deleted in Phase 4", nil)
 		return
@@ -266,8 +342,14 @@ func deleteRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 		return
 	}
 	if err := e.Reload(); err != nil {
-		_ = os.WriteFile(p, b, 0644)
-		_ = e.Reload()
+		if restoreErr := restoreCustomRuleFile(p, b); restoreErr != nil {
+			writeError(c, 400, "reload_failed", err.Error()+"; restore failed: "+restoreErr.Error(), nil)
+			return
+		}
+		if restoreReloadErr := e.Reload(); restoreReloadErr != nil {
+			writeError(c, 400, "reload_failed", err.Error()+"; restore reload failed: "+restoreReloadErr.Error(), nil)
+			return
+		}
 		writeError(c, 400, "reload_failed", err.Error(), nil)
 		return
 	}
@@ -290,9 +372,9 @@ func detectAction(before, after []byte) rulehistory.Action {
 	ae, be := a.IsEnabled(), b.IsEnabled()
 	a.Enabled = nil
 	b.Enabled = nil
-	ab, _ := yaml.Marshal(a)
-	bb, _ := yaml.Marshal(b)
-	if string(ab) == string(bb) && ae != be {
+	ab, errA := yaml.Marshal(a)
+	bb, errB := yaml.Marshal(b)
+	if errA == nil && errB == nil && string(ab) == string(bb) && ae != be {
 		if be {
 			return rulehistory.ActionEnable
 		}

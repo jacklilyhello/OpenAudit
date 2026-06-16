@@ -7,3 +7,6 @@ async function rollbackChange(rule,change){if(!rule){alert('Rollback requires a 
 async function loadBatches(){const data=await api('/imports/batches'); $('batches').innerHTML=data.items.map(x=>`<div><button onclick="showBatch('${x.batch_id}')">${x.batch_id}</button> ${x.timestamp} ${x.source} ${x.status} files=${x.files_scanned} read=${x.keywords_read} dedup=${x.keywords_deduplicated}</div>`).join('')}
 async function showBatch(id){$('batchDetail').textContent=JSON.stringify(await api('/imports/batches/'+id),null,2)}
 loadHistory().catch(()=>{});loadBatches().catch(()=>{});
+function importPayload(){return {input_path:$('impInput').value,output_path:$('impOutput').value,source:$('impSource').value||'sensitive-lexicon',type:$('impType').value,category:$('impCategory').value,risk_level:$('impRisk').value||'medium',action:$('impAction').value||'review',strict:$('impStrict').checked,reload_after_import:$('impReload').checked,record_history:true}}
+async function importPreview(){$('importResult').textContent=JSON.stringify(await api('/imports/preview',{method:'POST',body:JSON.stringify(importPayload())}),null,2)}
+async function runImport(){$('importResult').textContent=JSON.stringify(await api('/imports/run',{method:'POST',body:JSON.stringify(importPayload())}),null,2)}

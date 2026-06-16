@@ -96,3 +96,7 @@ Configure `server.trusted_proxies` for the local reverse proxy or tunnel source 
 ## Rule History Operations
 
 Back up `storage/rule-history/` with the rule data directory. Custom-rule rollback depends on the stored history entries and previous YAML snapshots embedded in those entries. Plan retention for `history.jsonl`, `import-batches.jsonl`, and snapshot files according to operational and compliance needs; losing these files does not stop the engine, but it removes rollback/change-audit context.
+
+## Imported rules operations
+
+Back up `data/imported/`, `storage/imports/`, and `storage/rule-history/import-batches.jsonl` with other operational state. Keep `external-rules/` operator-managed and out of git; it may contain large or private upstream rulesets.

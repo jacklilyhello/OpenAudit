@@ -12,6 +12,7 @@ type Config struct {
 	RateLimit        RateLimitConfig        `yaml:"rate_limit" json:"rate_limit"`
 	AuditLog         AuditLogConfig         `yaml:"audit_log" json:"audit_log"`
 	RuleHistory      RuleHistoryConfig      `yaml:"rule_history" json:"rule_history"`
+	Importer         ImporterConfig         `yaml:"importer" json:"importer"`
 	Limits           LimitsConfig           `yaml:"limits" json:"limits"`
 	UnsafeProduction bool                   `yaml:"-" json:"unsafe_production"`
 }
@@ -85,6 +86,18 @@ type RuleHistoryConfig struct {
 	ImportBatchesPath string `yaml:"import_batches_path" json:"import_batches_path"`
 	MaxEntries        int    `yaml:"max_entries" json:"max_entries"`
 	SnapshotDir       string `yaml:"snapshot_dir" json:"snapshot_dir"`
+}
+
+type ImporterConfig struct {
+	DefaultInputDir       string   `yaml:"default_input_dir" json:"default_input_dir"`
+	DefaultOutputDir      string   `yaml:"default_output_dir" json:"default_output_dir"`
+	ReportDir             string   `yaml:"report_dir" json:"report_dir"`
+	BatchHistoryPath      string   `yaml:"batch_history_path" json:"batch_history_path"`
+	MaxKeywordsPerFile    int      `yaml:"max_keywords_per_file" json:"max_keywords_per_file"`
+	DefaultSource         string   `yaml:"default_source" json:"default_source"`
+	AutoReloadAfterImport bool     `yaml:"auto_reload_after_import" json:"auto_reload_after_import"`
+	AllowRemoteClone      bool     `yaml:"allow_remote_clone" json:"allow_remote_clone"`
+	AllowedCloneHosts     []string `yaml:"allowed_clone_hosts" json:"allowed_clone_hosts"`
 }
 
 type LimitsConfig struct {

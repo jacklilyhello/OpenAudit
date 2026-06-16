@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,10 +36,14 @@ func (s *Store) Append(c Change) error {
 	if c.Diff.Summary.AddedLines == 0 && c.Diff.Summary.RemovedLines == 0 && (c.Before != "" || c.After != "") {
 		c.Diff = TextDiff(c.Before, c.After)
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0750); err != nil {
+	path, err := validatedStorePath(s.path)
+	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600) // #nosec G304 -- path is the configured history file after validatedStorePath makes it absolute, clean, and NUL-free.
 	if err != nil {
 		return err
 	}
@@ -58,7 +63,11 @@ func (s *Store) Append(c Change) error {
 	return nil
 }
 func (s *Store) all() (changes []Change, err error) {
-	f, err := os.Open(s.path)
+	path, err := validatedStorePath(s.path)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(path) // #nosec G304 -- path is the configured history file after validatedStorePath makes it absolute, clean, and NUL-free.
 	if errors.Is(err, os.ErrNotExist) {
 		return []Change{}, nil
 	}
@@ -174,8 +183,15 @@ func (s *Store) trim() error {
 		return err
 	}
 	all = all[len(all)-s.max:]
-	tmp := s.path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	path, err := validatedStorePath(s.path)
+	if err != nil {
+		return err
+	}
+	tmp, err := validatedStoreTempPath(path)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600) // #nosec G304 -- tmp is derived from the validated store path and remains adjacent to the history file.
 	if err != nil {
 		return err
 	}
@@ -192,5 +208,50 @@ func (s *Store) trim() error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	return os.Rename(tmp, path)
+}
+
+func validatedStorePath(path string) (string, error) {
+	if path == "" {
+		return "", errors.New("history path is empty")
+	}
+	if strings.ContainsRune(path, '\x00') {
+		return "", errors.New("history path contains NUL")
+	}
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(abs), nil
+}
+
+func validatedStoreTempPath(pathAbs string) (string, error) {
+	if !filepath.IsAbs(pathAbs) {
+		return "", errors.New("history path must be absolute")
+	}
+	dir := filepath.Dir(pathAbs)
+	tmp := filepath.Clean(filepath.Join(dir, filepath.Base(pathAbs)+".tmp"))
+	rel, err := filepath.Rel(dir, tmp)
+	if err != nil {
+		return "", err
+	}
+	if storeRelEscapesBase(rel) || filepath.IsAbs(rel) || rel == "." {
+		return "", errors.New("history temp path escapes history directory")
+	}
+	return tmp, nil
+}
+
+func storeRelEscapesBase(rel string) bool {
+	if rel == "." {
+		return false
+	}
+	if filepath.IsAbs(rel) {
+		return true
+	}
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }

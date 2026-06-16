@@ -78,3 +78,25 @@ Flags:
 - `--dry-run` records status `dry_run` when history recording is enabled and does not write output files.
 
 Generated import metadata is stored under `storage/rule-history/`. Full external rulesets should not be committed; keep generated/runtime rule files and history artifacts out of Git unless intentionally curated.
+
+## Phase 8 external ruleset import
+
+Clone Sensitive-lexicon outside committed rules:
+
+```sh
+git clone https://github.com/konsheng/Sensitive-lexicon ./external-rules/Sensitive-lexicon
+```
+
+Preview without writing YAML:
+
+```sh
+go run ./cmd/importer --input ./external-rules/Sensitive-lexicon --output ./data/imported --source sensitive-lexicon --type auto --risk medium --action review --dry-run --report ./storage/imports/reports/preview.json
+```
+
+Run an import, record batch history, and optionally reload a running server:
+
+```sh
+go run ./cmd/importer --input ./external-rules/Sensitive-lexicon --output ./data/imported --source sensitive-lexicon --type auto --risk medium --action review --record-history --reload-after-import --reload-url http://127.0.0.1:8080/rules/reload --api-key dev-key
+```
+
+The importer infers categories from Sensitive-lexicon-compatible directory/file names, maps common Chinese categories to safe English names, infers `keyword`, `domain`, and `regex` rules, removes duplicates by normalized line, skips comments/blanks, reports invalid regex/NUL/overlong lines, and writes deterministic files under `data/imported/<source>/<category>/<type>/`. Use `--strict` to fail on invalid lines, `--dedupe-scope batch|file`, and `--max-line-runes` to tune validation. Reports are JSON by default and batch records are JSONL. `external-rules/`, runtime reports, and private generated artifacts should not be committed.

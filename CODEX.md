@@ -639,3 +639,43 @@ Notes:
 - Rule rollback is supported for API-managed custom rules only in Phase 7.
 - No SQLite/database migration is introduced in this phase.
 - Existing Phase 1/2/3/4/5/6 APIs remain backward compatible.
+
+## Commit pending
+
+Date: 2026-06-16
+
+Summary:
+- Implement Phase 8 external ruleset import system
+- Add deep Sensitive-lexicon-compatible category and type inference
+- Add import preview and report generation
+- Add duplicate and invalid line handling
+- Add safe deterministic imported rule output layout
+- Add optional reload-after-import integration
+- Add import batch reporting integration
+- Add import APIs and admin UI support if implemented
+- Update importing, API, deployment, security, and README documentation
+- Add tests for importer mapping, preview, reports, output, and safety
+
+Files:
+- internal/importer/...
+- internal/api/...
+- internal/config/...
+- internal/rulehistory/...
+- cmd/importer/...
+- web/admin/...
+- config.example.yml
+- README.md
+- IMPORTING.md
+- API.md
+- DEPLOYMENT.md
+- SECURITY.md
+- CODEX.md
+- .gitignore
+- storage/imports/.gitkeep
+- storage/imports/reports/.gitkeep
+
+Notes:
+- Append-only log entry for Phase 8.
+- Full external Sensitive-lexicon content is not committed to the repository.
+- Imported rules should be generated locally by the operator.
+- Existing Phase 1/2/3/4/5/6/7 APIs remain backward compatible.

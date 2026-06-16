@@ -7,6 +7,7 @@ import (
 	"github.com/openaudit/openaudit/internal/risk"
 	"github.com/openaudit/openaudit/internal/rules"
 	"sort"
+	"strconv"
 	"sync"
 )
 
@@ -151,7 +152,7 @@ func sortDedup(h []matcher.Hit) []matcher.Hit {
 	out := h[:0]
 	seen := map[string]bool{}
 	for _, x := range h {
-		k := x.Type + "\x00" + x.RuleID + "\x00" + x.Match + "\x00" + string(rune(x.Start)) + "\x00" + string(rune(x.End))
+		k := x.Type + "\x00" + x.RuleID + "\x00" + x.Match + "\x00" + strconv.Itoa(x.Start) + "\x00" + strconv.Itoa(x.End)
 		if !seen[k] {
 			seen[k] = true
 			out = append(out, x)

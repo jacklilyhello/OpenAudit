@@ -54,3 +54,9 @@ storage/rule-history/*.json
 storage/rule-history/snapshots/*.yml
 storage/rule-history/snapshots/*.yaml
 !storage/rule-history/.gitkeep
+
+storage/imports/*.jsonl
+storage/imports/reports/*.json
+storage/imports/reports/*.md
+!storage/imports/.gitkeep
+!storage/imports/reports/.gitkeep
