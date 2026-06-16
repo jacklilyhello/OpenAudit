@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/openaudit/openaudit/internal/importer"
-	"github.com/openaudit/openaudit/internal/rulehistory"
+	"io"
 	"log"
 	"net/http"
+	"time"
+
+	"github.com/openaudit/openaudit/internal/importer"
+	"github.com/openaudit/openaudit/internal/rulehistory"
 )
 
 func main() {
@@ -34,14 +37,26 @@ func main() {
 	}
 	reloadOK := false
 	if *reloadURL != "" && !o.DryRun {
-		req, _ := http.NewRequest(http.MethodPost, *reloadURL, bytes.NewReader(nil))
-		if *apiKey != "" {
-			req.Header.Set("X-API-Key", *apiKey)
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			reloadOK = resp.StatusCode >= 200 && resp.StatusCode < 300
-			resp.Body.Close()
+		client := &http.Client{Timeout: 10 * time.Second}
+		req, err := http.NewRequest(http.MethodPost, *reloadURL, bytes.NewReader(nil))
+		if err != nil {
+			log.Printf("reload request skipped: %v", err)
+		} else {
+			if *apiKey != "" {
+				req.Header.Set("X-API-Key", *apiKey)
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				log.Printf("reload request failed: %v", err)
+			} else {
+				if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+					log.Printf("reload response drain failed: %v", err)
+				}
+				if err := resp.Body.Close(); err != nil {
+					log.Printf("reload response close failed: %v", err)
+				}
+				reloadOK = resp.StatusCode >= 200 && resp.StatusCode < 300
+			}
 		}
 	}
 	if *recordHistory {
@@ -49,7 +64,9 @@ func main() {
 		if o.DryRun {
 			status = "dry_run"
 		}
-		_ = rulehistory.NewBatchStore(*historyPath).AppendBatch(rulehistory.ImportBatch{Source: o.Source, InputPath: o.Input, OutputPath: o.Output, Category: o.Category, RiskLevel: o.Risk, Action: o.Action, FilesScanned: res.FilesScanned, KeywordsRead: res.KeywordsRead, KeywordsDeduplicated: res.KeywordsDeduplicated, RulesWritten: res.FilesWritten, DryRun: o.DryRun, ReloadAfterImport: reloadOK, Status: status, GeneratedFiles: res.Files})
+		if err := rulehistory.NewBatchStore(*historyPath).AppendBatch(rulehistory.ImportBatch{Source: o.Source, InputPath: o.Input, OutputPath: o.Output, Category: o.Category, RiskLevel: o.Risk, Action: o.Action, FilesScanned: res.FilesScanned, KeywordsRead: res.KeywordsRead, KeywordsDeduplicated: res.KeywordsDeduplicated, RulesWritten: res.FilesWritten, DryRun: o.DryRun, ReloadAfterImport: reloadOK, Status: status, GeneratedFiles: res.Files}); err != nil {
+			log.Printf("record import batch history failed: %v", err)
+		}
 	}
 	fmt.Printf("files scanned: %d\nkeywords read: %d\nkeywords deduplicated: %d\nfiles written: %d\n", res.FilesScanned, res.KeywordsRead, res.KeywordsDeduplicated, res.FilesWritten)
 }

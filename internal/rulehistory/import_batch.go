@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -49,17 +50,23 @@ func (b *BatchStore) AppendBatch(x ImportBatch) error {
 	if x.Timestamp.IsZero() {
 		x.Timestamp = time.Now().UTC()
 	}
-	if err := os.MkdirAll(filepath.Dir(b.path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(b.path), 0750); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(b.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(b.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return json.NewEncoder(f).Encode(x)
+	if err := json.NewEncoder(f).Encode(x); err != nil {
+		closeErr := f.Close()
+		if closeErr != nil {
+			return fmt.Errorf("encode import batch: %w; close import batch history: %v", err, closeErr)
+		}
+		return err
+	}
+	return f.Close()
 }
-func (b *BatchStore) all() ([]ImportBatch, error) {
+func (b *BatchStore) all() (batches []ImportBatch, err error) {
 	f, err := os.Open(b.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return []ImportBatch{}, nil
@@ -67,7 +74,11 @@ func (b *BatchStore) all() ([]ImportBatch, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 	out := []ImportBatch{}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1024), 10*1024*1024)
@@ -77,7 +88,10 @@ func (b *BatchStore) all() ([]ImportBatch, error) {
 			out = append(out, x)
 		}
 	}
-	return out, sc.Err()
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 func (b *BatchStore) List(f BatchFilter) ([]ImportBatch, int, error) {
 	b.mu.Lock()

@@ -35,15 +35,21 @@ func (s *Store) Append(c Change) error {
 	if c.Diff.Summary.AddedLines == 0 && c.Diff.Summary.RemovedLines == 0 && (c.Before != "" || c.After != "") {
 		c.Diff = TextDiff(c.Before, c.After)
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0750); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	if err := json.NewEncoder(f).Encode(c); err != nil {
+		closeErr := f.Close()
+		if closeErr != nil {
+			return fmt.Errorf("encode history: %w; close history: %v", err, closeErr)
+		}
+		return err
+	}
+	if err := f.Close(); err != nil {
 		return err
 	}
 	if s.max > 0 {
@@ -51,7 +57,7 @@ func (s *Store) Append(c Change) error {
 	}
 	return nil
 }
-func (s *Store) all() ([]Change, error) {
+func (s *Store) all() (changes []Change, err error) {
 	f, err := os.Open(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return []Change{}, nil
@@ -59,7 +65,11 @@ func (s *Store) all() ([]Change, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 	out := []Change{}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1024), 10*1024*1024)
@@ -72,7 +82,10 @@ func (s *Store) all() ([]Change, error) {
 			out = append(out, c)
 		}
 	}
-	return out, sc.Err()
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 func (s *Store) List(f Filter) ([]Change, int, error) {
 	s.mu.Lock()
@@ -162,17 +175,22 @@ func (s *Store) trim() error {
 	}
 	all = all[len(all)-s.max:]
 	tmp := s.path + ".tmp"
-	f, err := os.Create(tmp)
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
 	enc := json.NewEncoder(f)
 	for _, c := range all {
 		if err := enc.Encode(c); err != nil {
-			f.Close()
+			closeErr := f.Close()
+			if closeErr != nil {
+				return fmt.Errorf("encode trimmed history: %w; close history: %v", err, closeErr)
+			}
 			return err
 		}
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
 	return os.Rename(tmp, s.path)
 }

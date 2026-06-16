@@ -1,6 +1,8 @@
 package api
 
 import (
+	"errors"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/rulehistory"
@@ -104,8 +106,8 @@ func ruleDiff(c *gin.Context, s *rulehistory.Store, id string) {
 	c.JSON(200, items[0].Diff)
 }
 func rollbackRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) {
-	p, err := customPath(e.Root(), id)
-	if err != nil || !strings.HasPrefix(filepath.Clean(p), filepath.Clean(filepath.Join(e.Root(), "custom"))+string(os.PathSeparator)) {
+	p, err := validatedCustomRollbackPath(e.Root(), id)
+	if err != nil {
 		writeError(c, 400, "unsupported", "rollback is only supported for API-managed custom rules in Phase 7", nil)
 		return
 	}
@@ -123,31 +125,36 @@ func rollbackRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string
 		writeError(c, 404, "not_found", "history entry not found", nil)
 		return
 	}
-	cur, _ := os.ReadFile(p)
+	cur, curExists, err := readRollbackRule(p)
+	if err != nil {
+		writeError(c, 500, "rollback_failed", err.Error(), nil)
+		return
+	}
 	target := []byte(ch.Before)
 	if ch.Before == "" && ch.Action == rulehistory.ActionCreate {
 		target = nil
 	}
-	if len(target) == 0 {
-		_ = os.Remove(p)
-	} else {
-		_ = os.MkdirAll(filepath.Dir(p), 0755)
-		if err := os.WriteFile(p, target, 0644); err != nil {
-			writeError(c, 500, "rollback_failed", err.Error(), nil)
-			return
-		}
+	if err := writeRollbackTarget(p, target); err != nil {
+		writeError(c, 500, "rollback_failed", err.Error(), nil)
+		return
 	}
 	if err := e.Reload(); err != nil {
-		if len(cur) == 0 {
-			_ = os.Remove(p)
-		} else {
-			_ = os.WriteFile(p, cur, 0644)
+		if restoreErr := restoreRollbackRule(p, cur, curExists); restoreErr != nil {
+			writeError(c, 400, "reload_failed", fmt.Sprintf("%s; restore failed: %v", err.Error(), restoreErr), nil)
+			return
 		}
-		_ = e.Reload()
+		if restoreReloadErr := e.Reload(); restoreReloadErr != nil {
+			writeError(c, 400, "reload_failed", fmt.Sprintf("%s; restore reload failed: %v", err.Error(), restoreReloadErr), nil)
+			return
+		}
 		writeError(c, 400, "reload_failed", err.Error(), nil)
 		return
 	}
-	after, _ := os.ReadFile(p)
+	after, _, err := readRollbackRule(p)
+	if err != nil {
+		writeError(c, 500, "rollback_failed", err.Error(), nil)
+		return
+	}
 	entry := baseChange(c, h, id, rulehistory.ActionRollback, string(cur), string(after), p)
 	entry.Note = req.Note
 	entry.ReloadSuccess = true
@@ -155,6 +162,57 @@ func rollbackRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string
 	var r rules.Rule
 	_ = yaml.Unmarshal(after, &r)
 	c.JSON(200, gin.H{"ok": true, "rule": r, "reload_success": true})
+}
+
+func validatedCustomRollbackPath(root, id string) (string, error) {
+	if id == "" || strings.ContainsRune(id, '\x00') || strings.Contains(id, "/") || strings.Contains(id, "\\") || strings.Contains(id, "..") || filepath.IsAbs(id) {
+		return "", errors.New("invalid rule id")
+	}
+	customRoot := filepath.Clean(filepath.Join(root, "custom"))
+	p := filepath.Clean(filepath.Join(customRoot, id+".yml"))
+	rel, err := filepath.Rel(customRoot, p)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) || strings.ContainsRune(rel, '\x00') {
+		return "", errors.New("invalid rollback path")
+	}
+	return p, nil
+}
+
+func readRollbackRule(p string) ([]byte, bool, error) {
+	// #nosec G304 -- p is produced by validatedCustomRollbackPath and constrained to the API-managed custom rules directory.
+	b, err := os.ReadFile(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return b, true, nil
+}
+
+func writeRollbackTarget(p string, target []byte) error {
+	if len(target) == 0 {
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0750); err != nil {
+		return err
+	}
+	return os.WriteFile(p, target, 0600)
+}
+
+func restoreRollbackRule(p string, cur []byte, curExists bool) error {
+	if !curExists {
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0750); err != nil {
+		return err
+	}
+	return os.WriteFile(p, cur, 0600)
 }
 func baseChange(c *gin.Context, h HistoryServices, id string, act rulehistory.Action, before, after, path string) rulehistory.Change {
 	actor := c.Request.Header.Get("Cf-Access-Authenticated-User-Email")
