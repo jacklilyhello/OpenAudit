@@ -40,3 +40,7 @@ Production startup safety checks reject unsafe combinations by default: invalid 
 API keys are normalized by trimming whitespace, empty values are ignored, and presented keys are compared using constant-time comparison. Raw keys are not returned by `/config`; only configuration state is exposed.
 
 `/admin` is protected by a code-level guard. Production deployments should use Cloudflare Access at the edge or narrow trusted tunnel/private CIDRs. Cloudflare Access JWT cryptographic verification is not implemented in Phase 6; when `verify_jwt=false`, OpenAudit checks Access identity headers only as defense in depth and relies on Cloudflare Access policy enforcement at the edge. If `verify_jwt=true`, startup fails rather than accepting unverified JWTs.
+
+## Rule History Security
+
+Rule history and rollback endpoints are protected management APIs in production. History entries must not contain API keys, secrets, or authorization headers; OpenAudit records actor metadata, remote address, user agent, rule YAML, diffs, and reload status only. API keys must not be logged. Rollback can restore API-managed custom rules and should be limited to trusted operators. Cloudflare Access/admin protection guidance remains applicable; when the Cloudflare Access email header is present it is used as the rule-change actor.

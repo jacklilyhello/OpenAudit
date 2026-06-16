@@ -47,3 +47,10 @@ external-rules/
 storage/imports/*.json
 storage/imports/*.log
 !storage/.gitkeep
+
+# Rule history runtime files
+storage/rule-history/*.jsonl
+storage/rule-history/*.json
+storage/rule-history/snapshots/*.yml
+storage/rule-history/snapshots/*.yaml
+!storage/rule-history/.gitkeep

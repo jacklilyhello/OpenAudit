@@ -200,3 +200,51 @@ Common security errors:
 - `413` — body or configured text/batch limits exceeded.
 
 `/health` and `/version` remain public by default. `/audit/text`, `/audit/url`, `/audit/domain`, and `/audit/batch` remain public unless `security.protect_audit_api` is enabled.
+
+## Rule History and Versioning APIs
+
+In production, these are protected management APIs and require the configured API key.
+
+### `GET /rules/history`
+
+Query: `rule_id`, `action`, `actor`, `source`, `import_batch_id`, `limit`, `offset`.
+
+Response:
+
+```json
+{"items": [], "count": 0, "limit": 50, "offset": 0}
+```
+
+### `GET /rules/history/:change_id`
+
+Returns one change entry including `before`, `after`, `diff`, reload status, actor, remote address, and user agent.
+
+### `GET /rules/:id/history`
+
+Returns history filtered to one rule.
+
+### `GET /rules/:id/diff`
+
+Optional query: `from_change_id`, `to_change_id`. Without IDs, returns the latest stored diff for the rule.
+
+### `POST /rules/rollback/:id`
+
+Request:
+
+```json
+{"change_id":"change_...","note":"rollback bad rule update"}
+```
+
+Restores the selected entry's previous rule YAML, reloads rules atomically, and writes a new `rollback` history entry. Phase 7 rollback is supported only for API-managed custom rules under `data/custom/`; other rules return `rollback is only supported for API-managed custom rules in Phase 7`.
+
+### `GET /imports/batches`
+
+Query: `source`, `status`, `limit`, `offset`. Lists import batch records from `storage/rule-history/import-batches.jsonl`.
+
+### `GET /imports/batches/:batch_id`
+
+Returns one import batch record.
+
+### `GET /rules/changes/stats`
+
+Returns aggregate rule change counts by action, actor, and source plus recent changes.

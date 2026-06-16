@@ -602,3 +602,40 @@ Notes:
 - Cloudflare Access JWT cryptographic verification is explicitly marked as not implemented.
 - Existing Phase 1/2/3/4/5 APIs remain backward compatible.
 - Production /admin must not be exposed directly to the public internet.
+
+## Commit pending
+
+Date: 2026-06-16
+
+Summary:
+- Implement Phase 7 rule versioning and rollback foundation
+- Add rule history store and change records
+- Add rule diff support
+- Integrate history with custom rule create/update/delete
+- Add rollback API for API-managed custom rules
+- Add import batch tracking
+- Add rule history and import batch APIs
+- Improve admin dashboard with rule history, diffs, import batches, and rollback UI
+- Update config, documentation, and tests
+
+Files:
+- internal/rulehistory/...
+- internal/api/...
+- internal/rules/...
+- internal/importer/...
+- web/admin/...
+- config.example.yml
+- README.md
+- API.md
+- IMPORTING.md
+- DEPLOYMENT.md
+- SECURITY.md
+- CODEX.md
+- storage/rule-history/.gitkeep
+- .gitignore
+
+Notes:
+- Append-only log entry for Phase 7.
+- Rule rollback is supported for API-managed custom rules only in Phase 7.
+- No SQLite/database migration is introduced in this phase.
+- Existing Phase 1/2/3/4/5/6 APIs remain backward compatible.

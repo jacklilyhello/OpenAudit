@@ -56,3 +56,10 @@ limits:
   max_batch_items: 100
   max_hits: 100
   max_body_bytes: 1048576
+
+rule_history:
+  enabled: true
+  path: "./storage/rule-history/history.jsonl"
+  import_batches_path: "./storage/rule-history/import-batches.jsonl"
+  max_entries: 5000
+  snapshot_dir: "./storage/rule-history/snapshots"

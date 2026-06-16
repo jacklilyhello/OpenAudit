@@ -11,6 +11,7 @@ type Config struct {
 	CORS             CORSConfig             `yaml:"cors" json:"cors"`
 	RateLimit        RateLimitConfig        `yaml:"rate_limit" json:"rate_limit"`
 	AuditLog         AuditLogConfig         `yaml:"audit_log" json:"audit_log"`
+	RuleHistory      RuleHistoryConfig      `yaml:"rule_history" json:"rule_history"`
 	Limits           LimitsConfig           `yaml:"limits" json:"limits"`
 	UnsafeProduction bool                   `yaml:"-" json:"unsafe_production"`
 }
@@ -78,6 +79,14 @@ type AuditLogConfig struct {
 	LogRequestText bool   `yaml:"log_request_text" json:"log_request_text"`
 	LogHits        bool   `yaml:"log_hits" json:"log_hits"`
 }
+type RuleHistoryConfig struct {
+	Enabled           bool   `yaml:"enabled" json:"enabled"`
+	Path              string `yaml:"path" json:"path"`
+	ImportBatchesPath string `yaml:"import_batches_path" json:"import_batches_path"`
+	MaxEntries        int    `yaml:"max_entries" json:"max_entries"`
+	SnapshotDir       string `yaml:"snapshot_dir" json:"snapshot_dir"`
+}
+
 type LimitsConfig struct {
 	MaxTextRunes  int   `yaml:"max_text_runes" json:"max_text_runes"`
 	MaxBatchItems int   `yaml:"max_batch_items" json:"max_batch_items"`

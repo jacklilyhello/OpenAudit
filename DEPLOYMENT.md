@@ -92,3 +92,7 @@ Environment=OPENAUDIT_ALLOW_UNSAFE_PRODUCTION=false
 ```
 
 Configure `server.trusted_proxies` for the local reverse proxy or tunnel source addresses only. OpenAudit trusts `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For` only when the TCP peer is in trusted proxy CIDRs; spoofed forwarded headers from public clients are ignored.
+
+## Rule History Operations
+
+Back up `storage/rule-history/` with the rule data directory. Custom-rule rollback depends on the stored history entries and previous YAML snapshots embedded in those entries. Plan retention for `history.jsonl`, `import-batches.jsonl`, and snapshot files according to operational and compliance needs; losing these files does not stop the engine, but it removes rollback/change-audit context.
