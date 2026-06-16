@@ -18,7 +18,11 @@ func RegisterAuditWithOptions(r gin.IRouter, e *engine.Engine, limits config.Lim
 		start := time.Now()
 		var req model.AuditTextRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			writeError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+			status := http.StatusBadRequest
+			if err.Error() == "http: request body too large" {
+				status = http.StatusRequestEntityTooLarge
+			}
+			writeError(c, status, "invalid_request", err.Error(), nil)
 			return
 		}
 		if req.Text == "" {

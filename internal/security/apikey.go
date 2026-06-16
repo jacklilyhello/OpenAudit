@@ -1,30 +1,41 @@
 package security
 
-import "net/http"
+import (
+	"crypto/subtle"
+	"net/http"
+	"strings"
+)
 
 type Checker struct {
 	Enabled bool
-	Keys    map[string]bool
+	Keys    []string
 }
 
 func New(enabled bool, keys []string) Checker {
-	m := map[string]bool{}
+	out := []string{}
 	for _, k := range keys {
-		m[k] = true
+		if k = strings.TrimSpace(k); k != "" {
+			out = append(out, k)
+		}
 	}
-	return Checker{enabled, m}
+	return Checker{enabled, out}
 }
 func (c Checker) Valid(r *http.Request) bool {
 	if !c.Enabled {
 		return true
 	}
-	key := r.Header.Get("X-API-Key")
+	key := strings.TrimSpace(r.Header.Get("X-API-Key"))
 	if key == "" {
 		const p = "Bearer "
 		a := r.Header.Get("Authorization")
-		if len(a) > len(p) && a[:len(p)] == p {
-			key = a[len(p):]
+		if strings.HasPrefix(a, p) {
+			key = strings.TrimSpace(strings.TrimPrefix(a, p))
 		}
 	}
-	return c.Keys[key]
+	for _, k := range c.Keys {
+		if subtle.ConstantTimeCompare([]byte(key), []byte(k)) == 1 {
+			return true
+		}
+	}
+	return false
 }

@@ -15,7 +15,11 @@ func RegisterBatchWithOptions(r gin.IRouter, e *engine.Engine, limits config.Lim
 	r.POST("/audit/batch", func(c *gin.Context) {
 		var req model.AuditBatchRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			writeError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+			status := http.StatusBadRequest
+			if err.Error() == "http: request body too large" {
+				status = http.StatusRequestEntityTooLarge
+			}
+			writeError(c, status, "invalid_request", err.Error(), nil)
 			return
 		}
 		if len(req.Items) > limits.MaxBatchItems {

@@ -568,3 +568,37 @@ Notes:
 - Append-only log entry for Phase 5.
 - Production Cloudflare Access enforcement is documented in Phase 5 and reserved for implementation in Phase 6.
 - Existing Phase 1/2/3/4 APIs remain backward compatible.
+
+## Commit pending
+
+Date: 2026-06-16
+
+Summary:
+- Implement Phase 6 production access security controls
+- Add environment mode support
+- Enforce production API key safety
+- Add admin access guard for local/private/Cloudflare Access header mode
+- Add trusted proxy client IP extraction
+- Harden management API protection
+- Add security headers, CORS controls, rate limiting, and request body limits
+- Update config examples, environment examples, docs, and tests
+
+Files:
+- internal/config/...
+- internal/security/...
+- internal/api/...
+- internal/admin/...
+- internal/logstore/...
+- config.example.yml
+- .env.example
+- README.md
+- SECURITY.md
+- DEPLOYMENT.md
+- API.md
+- CODEX.md
+
+Notes:
+- Append-only log entry for Phase 6.
+- Cloudflare Access JWT cryptographic verification is explicitly marked as not implemented.
+- Existing Phase 1/2/3/4/5 APIs remain backward compatible.
+- Production /admin must not be exposed directly to the public internet.

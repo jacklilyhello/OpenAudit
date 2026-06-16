@@ -2,6 +2,10 @@ package main
 
 import (
 	"flag"
+	"log"
+	"net/http"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/openaudit/openaudit/internal/admin"
 	"github.com/openaudit/openaudit/internal/api"
@@ -9,9 +13,6 @@ import (
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/logstore"
 	"github.com/openaudit/openaudit/internal/security"
-	"log"
-	"net/http"
-	"time"
 )
 
 func main() {
@@ -20,6 +21,9 @@ func main() {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+	if cfg.UnsafeProduction && cfg.App.Env == "production" {
+		log.Printf("WARNING: OPENAUDIT_ALLOW_UNSAFE_PRODUCTION=true disables production safety checks")
 	}
 	e, err := engine.New(cfg.Rules.DataDir)
 	if err != nil {
@@ -30,14 +34,14 @@ func main() {
 		log.Printf("audit log disabled: %v", err)
 	}
 	r := gin.Default()
-	checker := security.New(cfg.Security.APIKeyEnabled, cfg.Security.APIKeys)
-	r.Use(func(c *gin.Context) bool {
-		if security.IsProtected(c.Request.URL.Path, cfg.Security.ProtectedPaths) && !checker.Valid(c.Request) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing or invalid API key"})
-			return false
-		}
-		return true
-	})
+	if cfg.SecurityHeaders.Enabled {
+		r.Use(security.SecurityHeaders())
+	}
+	r.Use(security.CORS(cfg.CORS))
+	r.Use(security.BodyLimit(cfg.Limits.MaxBodyBytes))
+	r.Use(security.NewRateLimiter().Middleware(cfg.RateLimit, cfg.Server.TrustedProxies))
+	r.Use(security.APIKeyMiddleware(cfg, security.New(cfg.Security.APIKeyEnabled, cfg.Security.APIKeys)))
+	r.Use(security.AdminGuard(cfg))
 	api.RegisterHealth(r)
 	api.RegisterOps(r, cfg)
 	api.RegisterAuditWithOptions(r, e, cfg.Limits, logs)

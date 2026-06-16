@@ -32,3 +32,11 @@ OpenAudit is a policy-based content review and risk audit engine for lawful mode
 ## Safe configuration notes
 
 Use least-privilege filesystem permissions, store logs in protected locations, avoid logging sensitive request text when not needed, rotate audit logs, and keep private or large rulesets outside git.
+
+## Phase 6 production security controls
+
+Production startup safety checks reject unsafe combinations by default: invalid `app.env`, wildcard production CORS, missing non-development API keys when API key auth is enabled, disabled management API protection, and unguarded admin exposure fail startup. `OPENAUDIT_ALLOW_UNSAFE_PRODUCTION=true` exists only as an emergency/development escape hatch and should not be used for internet-facing deployments.
+
+API keys are normalized by trimming whitespace, empty values are ignored, and presented keys are compared using constant-time comparison. Raw keys are not returned by `/config`; only configuration state is exposed.
+
+`/admin` is protected by a code-level guard. Production deployments should use Cloudflare Access at the edge or narrow trusted tunnel/private CIDRs. Cloudflare Access JWT cryptographic verification is not implemented in Phase 6; when `verify_jwt=false`, OpenAudit checks Access identity headers only as defense in depth and relies on Cloudflare Access policy enforcement at the edge. If `verify_jwt=true`, startup fails rather than accepting unverified JWTs.

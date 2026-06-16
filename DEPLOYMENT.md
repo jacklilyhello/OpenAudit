@@ -76,3 +76,19 @@ Mount or persist:
 ## Backup and retention
 
 Back up `data/` if it contains local rule edits and `storage/` if audit history matters. JSONL logs can grow over time; configure OS log rotation or application retention policies. Do not back up or publish secrets in config snapshots.
+
+## Phase 6 recommended production model
+
+Run OpenAudit on a VPS with `OPENAUDIT_ENV=production`, real API keys in environment variables, and a Cloudflare Tunnel or tightly controlled reverse proxy in front of the service. Do not expose `/admin` directly to the public internet, and do not point an admin DNS name directly at the VPS origin IP. Put Cloudflare Access in front of the admin route and keep origin firewall rules restrictive.
+
+Example systemd environment:
+
+```ini
+Environment=OPENAUDIT_ENV=production
+Environment=OPENAUDIT_CONFIG=/etc/openaudit/config.yml
+Environment=OPENAUDIT_API_KEYS=replace-with-secret-1,replace-with-secret-2
+Environment=OPENAUDIT_ADMIN_API_KEY=replace-with-admin-secret
+Environment=OPENAUDIT_ALLOW_UNSAFE_PRODUCTION=false
+```
+
+Configure `server.trusted_proxies` for the local reverse proxy or tunnel source addresses only. OpenAudit trusts `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For` only when the TCP peer is in trusted proxy CIDRs; spoofed forwarded headers from public clients are ignored.

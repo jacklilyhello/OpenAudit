@@ -187,3 +187,16 @@ Returns aggregate counts from the in-memory recent audit log window.
 ## Future endpoints
 
 No AI, OCR, database, or Cloudflare Access verification endpoints are implemented in Phase 5. Those features are reserved for later phases.
+
+## Phase 6 access control and error behavior
+
+Protected management endpoints include `POST /rules/reload`, `POST /rules/create`, `PATCH /rules/update/:id`, `DELETE /rules/delete/:id`, `GET /logs/recent`, `GET /logs/stats`, and `GET /config`. In production these require an API key unless the unsafe production override is set. Send keys with `Authorization: Bearer <key>` or `X-API-Key: <key>`.
+
+Common security errors:
+
+- `401` — missing or invalid API key.
+- `403` — admin access denied by CIDR/Cloudflare Access guard.
+- `429` — per-client-IP in-memory rate limit exceeded. Audit, management, and admin endpoints have separate per-minute buckets.
+- `413` — body or configured text/batch limits exceeded.
+
+`/health` and `/version` remain public by default. `/audit/text`, `/audit/url`, `/audit/domain`, and `/audit/batch` remain public unless `security.protect_audit_api` is enabled.
