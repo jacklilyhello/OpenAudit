@@ -1,0 +1,9 @@
+id: domain_001
+type: domain
+category: blocked_domain
+risk_level: medium
+action: review
+score: 60
+domains:
+  - epochtimes.com
+  - blocked.test
