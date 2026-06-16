@@ -406,3 +406,68 @@ Never edit previous entries.
 
 Append new entries only.
 
+
+## Commit pending
+
+Date: 2026-06-16
+
+Summary:
+- Created the Phase 1 MVP Go project foundation with health, audit, batch, rule stats, reload, and admin dashboard endpoints.
+- Added YAML rule loading, normalization, keyword matching, regex precompilation, domain suffix matching, risk scoring, and action priority handling.
+- Added sample rules, README quick start instructions, and API examples.
+
+Files:
+- cmd/server/main.go
+- internal/api/health.go
+- internal/api/audit.go
+- internal/api/batch.go
+- internal/api/rules.go
+- internal/admin/admin.go
+- internal/engine/engine.go
+- internal/engine/result.go
+- internal/matcher/keyword.go
+- internal/matcher/regex.go
+- internal/matcher/domain.go
+- internal/normalizer/normalizer.go
+- internal/rules/loader.go
+- internal/rules/model.go
+- internal/rules/hotreload.go
+- internal/risk/score.go
+- internal/ai/checker.go
+- internal/model/api.go
+- data/keywords/test.yml
+- data/regex/test.yml
+- data/domains/test.yml
+- web/admin/index.html
+- web/admin/app.js
+- web/admin/style.css
+- README.md
+- CODEX.md
+
+Notes:
+- Phase 1 uses local YAML files only and includes a lightweight Gin-compatible local module for this MVP environment.
+
+## Commit pending
+
+Date: 2026-06-16
+
+Summary:
+- Implement Phase 2 rule model enhancement
+- Add safer atomic rule hot reload
+- Add Sensitive-lexicon-compatible txt importer foundation
+- Add pinyin and homophone mapping support
+- Improve normalization and stats
+- Add tests
+
+Files:
+- internal/rules/...
+- internal/importer/...
+- internal/matcher/...
+- internal/normalizer/...
+- internal/api/...
+- web/admin/...
+- README.md
+- CODEX.md
+
+Notes:
+- Append-only log entry for Phase 2.

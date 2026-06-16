@@ -1,0 +1,6 @@
+# safe demo words only
+测试敏感词
+测试关键词
+blocked-demo
+// duplicate below is ignored
+测试关键词

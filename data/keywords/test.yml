@@ -1,0 +1,16 @@
+id: political_001
+type: keyword
+category: political
+risk_level: high
+action: block
+score: 90
+description: Political sensitive keyword demo rule
+source: local
+tags:
+  - political
+  - demo
+enabled: true
+keywords:
+  - 法轮功
+  - 六四
+  - 天安门事件
