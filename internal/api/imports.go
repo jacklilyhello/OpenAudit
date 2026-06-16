@@ -114,18 +114,11 @@ func resolveImportAPIPath(requestPath, defaultRoot, field string) (string, error
 	var candidateAbs string
 	if filepath.IsAbs(provided) {
 		candidateAbs, err = safeAPIAbsPath(provided)
-		if err != nil {
-			return "", fmt.Errorf("%s: %w", field, err)
-		}
 	} else {
-		candidateAbs, err = safeAPIAbsPath(provided)
-		if err == nil && ensureAPIPathUnder(rootAbs, candidateAbs) == nil {
-			return candidateAbs, nil
-		}
 		candidateAbs, err = safeAPIAbsPath(filepath.Join(rootAbs, provided))
-		if err != nil {
-			return "", fmt.Errorf("%s: %w", field, err)
-		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", field, err)
 	}
 	if err := ensureAPIPathUnder(rootAbs, candidateAbs); err != nil {
 		return "", fmt.Errorf("%s outside configured root: %w", field, err)
@@ -175,5 +168,16 @@ func ensureAPIPathUnder(baseAbs, candidateAbs string) error {
 }
 
 func apiRelEscapesBase(rel string) bool {
-	return rel == ".." || len(rel) > 3 && rel[:3] == ".."+string(os.PathSeparator)
+	if rel == "." {
+		return false
+	}
+	if filepath.IsAbs(rel) {
+		return true
+	}
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }

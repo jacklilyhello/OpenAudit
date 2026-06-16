@@ -215,7 +215,18 @@ func ensurePathUnder(baseAbs, candidateAbs string) error {
 }
 
 func relEscapesBase(rel string) bool {
-	return rel == ".." || len(rel) > 3 && rel[:3] == ".."+string(os.PathSeparator)
+	if rel == "." {
+		return false
+	}
+	if filepath.IsAbs(rel) {
+		return true
+	}
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func isCommentLine(line string) bool {
