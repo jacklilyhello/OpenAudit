@@ -10,6 +10,7 @@ import (
 	"github.com/openaudit/openaudit/internal/rules"
 	"gopkg.in/yaml.v3"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -178,7 +179,8 @@ func cleanUserPath(p string) (string, error) {
 }
 
 func containsParentTraversal(p string) bool {
-	for _, part := range strings.Split(filepath.ToSlash(p), "/") {
+	p = strings.ReplaceAll(filepath.ToSlash(p), "\\", "/")
+	for _, part := range strings.Split(p, "/") {
 		if part == ".." {
 			return true
 		}
@@ -272,12 +274,11 @@ func safeJoinUnder(baseAbs string, elems ...string) (string, error) {
 }
 
 func validateInputRoot(input string) (string, error) {
-	rootAbs, err := absCleanPath(input)
+	validatedInputRootAbs, err := absCleanPath(input)
 	if err != nil {
 		return "", err
 	}
-	// codeql[go/path-injection] -- rootAbs is produced by absCleanPath, rejects NUL/traversal, and is required to be a directory before walking.
-	info, err := os.Lstat(rootAbs)
+	info, err := lstatValidatedPathAbs(validatedInputRootAbs)
 	if err != nil {
 		return "", fmt.Errorf("stat input root: %w", err)
 	}
@@ -287,16 +288,15 @@ func validateInputRoot(input string) (string, error) {
 	if !info.IsDir() {
 		return "", errors.New("input root is not a directory")
 	}
-	return rootAbs, nil
+	return validatedInputRootAbs, nil
 }
 
 func validateOutputRoot(output string, create bool) (string, error) {
-	rootAbs, err := absCleanPath(output)
+	validatedOutputRootAbs, err := absCleanPath(output)
 	if err != nil {
 		return "", err
 	}
-	// codeql[go/path-injection] -- rootAbs is produced by absCleanPath, rejects NUL/traversal, and is validated before output writes.
-	info, err := os.Lstat(rootAbs)
+	info, err := lstatValidatedPathAbs(validatedOutputRootAbs)
 	if err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return "", errors.New("output root symlink rejected")
@@ -304,77 +304,94 @@ func validateOutputRoot(output string, create bool) (string, error) {
 		if !info.IsDir() {
 			return "", errors.New("output root is not a directory")
 		}
-		return rootAbs, nil
+		return validatedOutputRootAbs, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("stat output root: %w", err)
 	}
 	if create {
-		if err := mkdirAll0750Under(rootAbs, rootAbs); err != nil {
+		if err := mkdirAll0750Under(validatedOutputRootAbs, validatedOutputRootAbs); err != nil {
 			return "", fmt.Errorf("create output root: %w", err)
 		}
 	}
-	return rootAbs, nil
+	return validatedOutputRootAbs, nil
+}
+
+func lstatValidatedPathAbs(validatedPathAbs string) (os.FileInfo, error) {
+	if validatedPathAbs == "" {
+		return nil, errors.New("validated path is empty")
+	}
+	if strings.ContainsRune(validatedPathAbs, 0) {
+		return nil, errors.New("validated path contains NUL")
+	}
+	if !filepath.IsAbs(validatedPathAbs) {
+		return nil, errors.New("validated path must be absolute")
+	}
+	validatedPathAbs = filepath.Clean(validatedPathAbs)
+	if containsParentTraversal(validatedPathAbs) {
+		return nil, errors.New("validated path contains parent traversal")
+	}
+	// codeql[go/path-injection] -- validatedPathAbs is an absolute path returned by absCleanPath or safeJoinUnder; callers filepath.Rel-constrain request-derived candidates under a validated root, reject NUL/parent traversal/absolute escape, and reject symlinks before use.
+	return os.Lstat(validatedPathAbs)
 }
 
 func validateReportPath(reportPath string, allowedReportRoot string) (string, error) {
 	if strings.TrimSpace(reportPath) == "" {
 		return "", nil
 	}
-	reportAbs, err := absCleanPath(reportPath)
+	validatedReportPathAbs, err := absCleanPath(reportPath)
 	if err != nil {
 		return "", err
 	}
+	validatedReportRootAbs := ""
 	if allowedReportRoot != "" {
-		rootAbs, err := absCleanPath(allowedReportRoot)
+		validatedReportRootAbs, err = absCleanPath(allowedReportRoot)
 		if err != nil {
 			return "", fmt.Errorf("report root: %w", err)
 		}
-		// codeql[go/path-injection] -- rootAbs is produced by absCleanPath from configured report root and checked before report writes.
-		// codeql[go/path-injection] -- rootAbs is produced by absCleanPath from configured report root and checked after directory creation.
-		if info, err := os.Lstat(rootAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if info, err := lstatValidatedPathAbs(validatedReportRootAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
 			return "", errors.New("report root symlink rejected")
 		}
-		if err := mkdirAll0750Under(rootAbs, rootAbs); err != nil {
+		if err := mkdirAll0750Under(validatedReportRootAbs, validatedReportRootAbs); err != nil {
 			return "", fmt.Errorf("create report root: %w", err)
 		}
-		if info, err := os.Lstat(rootAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if info, err := lstatValidatedPathAbs(validatedReportRootAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
 			return "", errors.New("report root symlink rejected")
 		}
-		if err := ensurePathUnder(rootAbs, reportAbs); err != nil {
+		if err := ensurePathUnder(validatedReportRootAbs, validatedReportPathAbs); err != nil {
 			return "", err
 		}
 	}
-	parent := filepath.Dir(reportAbs)
-	// codeql[go/path-injection] -- parent is derived from reportAbs after reportAbs is constrained under the validated report root.
-	if info, err := os.Lstat(parent); err == nil && info.Mode()&os.ModeSymlink != 0 {
+	validatedParentDirAbs := filepath.Clean(filepath.Dir(validatedReportPathAbs))
+	if validatedReportRootAbs != "" {
+		if err := ensurePathUnder(validatedReportRootAbs, validatedParentDirAbs); err != nil {
+			return "", err
+		}
+	}
+	if info, err := lstatValidatedPathAbs(validatedParentDirAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return "", errors.New("report parent symlink rejected")
 	}
-	if allowedReportRoot != "" {
-		rootAbs, err := absCleanPath(allowedReportRoot)
-		if err != nil {
-			return "", fmt.Errorf("report root: %w", err)
-		}
-		if err := mkdirAll0750Under(rootAbs, parent); err != nil {
+	if validatedReportRootAbs != "" {
+		if err := mkdirAll0750Under(validatedReportRootAbs, validatedParentDirAbs); err != nil {
 			return "", fmt.Errorf("create report directory: %w", err)
 		}
 	} else {
-		if err := mkdirAll0750Under(parent, parent); err != nil {
+		if err := mkdirAll0750Under(validatedParentDirAbs, validatedParentDirAbs); err != nil {
 			return "", fmt.Errorf("create report directory: %w", err)
 		}
 	}
-	return reportAbs, nil
+	return validatedReportPathAbs, nil
 }
 
 func mkdirAll0750Under(rootAbs, dirAbs string) error {
 	if !filepath.IsAbs(dirAbs) {
 		return errors.New("directory path must be absolute")
 	}
-	if err := ensurePathUnder(rootAbs, dirAbs); err != nil {
+	validatedDirAbs := filepath.Clean(dirAbs)
+	if err := ensurePathUnder(rootAbs, validatedDirAbs); err != nil {
 		return err
 	}
-	// codeql[go/path-injection] -- dirAbs is absolute and filepath.Rel-constrained under validated rootAbs immediately above.
-	if info, err := os.Lstat(dirAbs); err == nil {
+	if info, err := lstatValidatedPathAbs(validatedDirAbs); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return errors.New("directory symlink rejected")
 		}
@@ -383,8 +400,9 @@ func mkdirAll0750Under(rootAbs, dirAbs string) error {
 		}
 		return nil
 	}
-	// codeql[go/path-injection] -- dirAbs is absolute and filepath.Rel-constrained under validated rootAbs immediately above.
-	if err := os.MkdirAll(dirAbs, 0750); err != nil {
+	// codeql[go/path-injection] -- validatedDirAbs is an absolute path accepted by mkdirAll0750Under after filepath.Rel containment under rootAbs; the path rejects NUL/parent traversal/absolute escape, and any existing symlink was rejected immediately above.
+	err := os.MkdirAll(validatedDirAbs, 0750)
+	if err != nil {
 		return fmt.Errorf("create directory: %w", err)
 	}
 	return nil
@@ -394,11 +412,11 @@ func openValidatedInputFile(inputRootAbs, fileAbs string) (*os.File, error) {
 	if !filepath.IsAbs(fileAbs) {
 		return nil, errors.New("input file path must be absolute")
 	}
-	if err := ensurePathUnder(inputRootAbs, fileAbs); err != nil {
+	validatedFileAbs := filepath.Clean(fileAbs)
+	if err := ensurePathUnder(inputRootAbs, validatedFileAbs); err != nil {
 		return nil, err
 	}
-	// codeql[go/path-injection] -- fileAbs is absolute and filepath.Rel-constrained under validated inputRootAbs before lstat.
-	info, err := os.Lstat(fileAbs)
+	info, err := lstatValidatedPathAbs(validatedFileAbs)
 	if err != nil {
 		return nil, err
 	}
@@ -408,53 +426,53 @@ func openValidatedInputFile(inputRootAbs, fileAbs string) (*os.File, error) {
 	if info.IsDir() {
 		return nil, errors.New("input file is a directory")
 	}
-	// codeql[go/path-injection] -- fileAbs is absolute, filepath.Rel-constrained under validated inputRootAbs, and Lstat rejects symlinks/directories immediately before opening.
-	return os.Open(fileAbs) // #nosec G304,G305 -- fileAbs is absolute, filepath.Rel-constrained under validated inputRootAbs, and Lstat rejects symlinks/directories immediately before opening; OpenAudit supports Go versions without os.OpenRoot.
+	// codeql[go/path-injection] -- validatedFileAbs is absolute, filepath.Rel-constrained under validated inputRootAbs, and Lstat rejects symlinks/directories immediately before opening.
+	return os.Open(validatedFileAbs) // #nosec G304,G305 -- validatedFileAbs is absolute, filepath.Rel-constrained under validated inputRootAbs, and Lstat rejects symlinks/directories immediately before opening; OpenAudit supports Go versions without os.OpenRoot.
 }
 
 func writeValidatedFile0600Under(rootAbs, dstAbs string, data []byte) error {
 	if !filepath.IsAbs(dstAbs) {
 		return errors.New("destination path must be absolute")
 	}
-	if err := ensurePathUnder(rootAbs, dstAbs); err != nil {
+	validatedDstAbs := filepath.Clean(dstAbs)
+	if err := ensurePathUnder(rootAbs, validatedDstAbs); err != nil {
 		return err
 	}
-	parent := filepath.Dir(dstAbs)
-	if err := ensurePathUnder(rootAbs, parent); err != nil {
-		return err
-	}
-	if err := mkdirAll0750Under(rootAbs, parent); err != nil {
-		return err
-	}
-	return writeFile0600AtomicValidated(rootAbs, dstAbs, data)
-}
-
-func writeFile0600AtomicValidated(rootAbs, dstAbs string, data []byte) error {
-	if err := ensurePathUnder(rootAbs, dstAbs); err != nil {
-		return err
-	}
-	parent := filepath.Dir(dstAbs)
-	if err := ensurePathUnder(rootAbs, parent); err != nil {
-		return err
-	}
-	tmpName := fmt.Sprintf(".openaudit-import-%d.tmp", time.Now().UnixNano())
-	tmpAbs, err := safeJoinUnder(parent, tmpName)
+	validatedParentDirAbs, err := validatedParentDirUnder(rootAbs, validatedDstAbs)
 	if err != nil {
 		return err
 	}
-	if err := ensurePathUnder(rootAbs, tmpAbs); err != nil {
+	if err := mkdirAll0750Under(rootAbs, validatedParentDirAbs); err != nil {
 		return err
 	}
-	// codeql[go/path-injection] -- tmpAbs is a generated filename under parent, and parent/destination are filepath.Rel-constrained under validated rootAbs.
-	tmp, err := os.OpenFile(tmpAbs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 -- tmpAbs is generated under a validated destination directory constrained to rootAbs.
+	return writeFile0600AtomicValidated(rootAbs, validatedDstAbs, data)
+}
+
+func writeFile0600AtomicValidated(rootAbs, dstAbs string, data []byte) error {
+	validatedDstAbs := filepath.Clean(dstAbs)
+	if err := ensurePathUnder(rootAbs, validatedDstAbs); err != nil {
+		return err
+	}
+	validatedParentDirAbs, err := validatedParentDirUnder(rootAbs, validatedDstAbs)
+	if err != nil {
+		return err
+	}
+	tmpName := fmt.Sprintf(".openaudit-import-%d.tmp", time.Now().UnixNano())
+	validatedTmpAbs, err := safeJoinUnder(validatedParentDirAbs, tmpName)
+	if err != nil {
+		return err
+	}
+	if err := ensurePathUnder(rootAbs, validatedTmpAbs); err != nil {
+		return err
+	}
+	tmp, err := openValidatedTempFile0600(rootAbs, validatedTmpAbs)
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
 	cleanup := true
 	defer func() {
 		if cleanup {
-			// codeql[go/path-injection] -- tmpAbs is generated by this function under a filepath.Rel-constrained validated directory.
-			_ = os.Remove(tmpAbs)
+			removeValidatedTempFile(rootAbs, validatedTmpAbs)
 		}
 	}()
 	if _, err := tmp.Write(data); err != nil {
@@ -474,12 +492,76 @@ func writeFile0600AtomicValidated(rootAbs, dstAbs string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
 	}
-	// codeql[go/path-injection] -- tmpAbs and dstAbs are both filepath.Rel-constrained under validated rootAbs; tmpAbs uses a generated filename.
-	if err := os.Rename(tmpAbs, dstAbs); err != nil {
+	if err := renameValidatedFile(rootAbs, validatedTmpAbs, validatedDstAbs); err != nil {
 		return fmt.Errorf("rename temp file: %w", err)
 	}
 	cleanup = false
 	return nil
+}
+
+func validatedParentDirUnder(rootAbs, fileAbs string) (string, error) {
+	if !filepath.IsAbs(fileAbs) {
+		return "", errors.New("file path must be absolute")
+	}
+	validatedFileAbs := filepath.Clean(fileAbs)
+	if err := ensurePathUnder(rootAbs, validatedFileAbs); err != nil {
+		return "", err
+	}
+	validatedParentDirAbs := filepath.Clean(filepath.Dir(validatedFileAbs))
+	if err := ensurePathUnder(rootAbs, validatedParentDirAbs); err != nil {
+		return "", err
+	}
+	return validatedParentDirAbs, nil
+}
+
+func openValidatedTempFile0600(rootAbs, tmpAbs string) (*os.File, error) {
+	validatedTmpAbs := filepath.Clean(tmpAbs)
+	if err := ensurePathUnder(rootAbs, validatedTmpAbs); err != nil {
+		return nil, err
+	}
+	// codeql[go/path-injection] -- validatedTmpAbs is a generated temp filename returned by safeJoinUnder beneath a validated parent directory; it is absolute, filepath.Rel-constrained under rootAbs, rejects NUL/parent traversal/absolute escape, and is created with 0600 permissions.
+	return os.OpenFile(validatedTmpAbs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 -- validatedTmpAbs is generated under a validated destination directory constrained to rootAbs.
+}
+
+func removeValidatedTempFile(rootAbs, tmpAbs string) {
+	validatedTmpAbs := filepath.Clean(tmpAbs)
+	if err := ensurePathUnder(rootAbs, validatedTmpAbs); err != nil {
+		return
+	}
+	// codeql[go/path-injection] -- validatedTmpAbs is a generated temp filename returned by safeJoinUnder beneath a validated parent directory and filepath.Rel-constrained under rootAbs before removal.
+	_ = os.Remove(validatedTmpAbs)
+}
+
+func renameValidatedFile(rootAbs, oldAbs, newAbs string) error {
+	validatedOldAbs := filepath.Clean(oldAbs)
+	validatedNewAbs := filepath.Clean(newAbs)
+	if err := ensurePathUnder(rootAbs, validatedOldAbs); err != nil {
+		return err
+	}
+	if err := ensurePathUnder(rootAbs, validatedNewAbs); err != nil {
+		return err
+	}
+	// codeql[go/path-injection] -- validatedOldAbs and validatedNewAbs are absolute paths filepath.Rel-constrained under rootAbs; the old path is a generated temp filename and the new path was returned by safeJoinUnder/validateReportPath.
+	return os.Rename(validatedOldAbs, validatedNewAbs)
+}
+
+func walkValidatedInputRoot(validatedInputRootAbs string, walkFn fs.WalkDirFunc) error {
+	if validatedInputRootAbs == "" || strings.ContainsRune(validatedInputRootAbs, 0) || !filepath.IsAbs(validatedInputRootAbs) {
+		return errors.New("input root is not a validated absolute path")
+	}
+	validatedInputRootAbs = filepath.Clean(validatedInputRootAbs)
+	info, err := lstatValidatedPathAbs(validatedInputRootAbs)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("input root symlink rejected")
+	}
+	if !info.IsDir() {
+		return errors.New("input root is not a directory")
+	}
+	// codeql[go/path-injection] -- validatedInputRootAbs is returned by validateInputRoot as an absolute, clean path that rejects NUL/parent traversal; it is confirmed to be a non-symlink directory immediately before walking.
+	return filepath.WalkDir(validatedInputRootAbs, walkFn)
 }
 
 func ReportFileName(batchID string) string {
@@ -512,11 +594,11 @@ func ImportSensitiveLexicon(o Options) (Result, error) {
 func Run(o Options) (*Report, error) {
 	defaults(&o)
 	start := time.Now()
-	inputRootAbs, err := validateInputRoot(o.Input)
+	validatedInputRootAbs, err := validateInputRoot(o.Input)
 	if err != nil {
 		return nil, err
 	}
-	outputRootAbs, err := validateOutputRoot(o.Output, !o.DryRun)
+	validatedOutputRootAbs, err := validateOutputRoot(o.Output, !o.DryRun)
 	if err != nil {
 		return nil, err
 	}
@@ -528,7 +610,7 @@ func Run(o Options) (*Report, error) {
 	}
 	groups := map[string][]string{}
 	seenBatch := map[string]bool{}
-	err = filepath.WalkDir(inputRootAbs, func(path string, d os.DirEntry, walkErr error) error {
+	err = walkValidatedInputRoot(validatedInputRootAbs, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -542,21 +624,21 @@ func Run(o Options) (*Report, error) {
 		if ext != ".txt" && ext != ".list" && ext != ".csv" {
 			return nil
 		}
-		fileAbs, err := filepath.Abs(path)
+		validatedFileAbs, err := filepath.Abs(path)
 		if err != nil {
 			return fmt.Errorf("absolute input file path: %w", err)
 		}
-		fileAbs = filepath.Clean(fileAbs)
-		if err := ensurePathUnder(inputRootAbs, fileAbs); err != nil {
+		validatedFileAbs = filepath.Clean(validatedFileAbs)
+		if err := ensurePathUnder(validatedInputRootAbs, validatedFileAbs); err != nil {
 			return err
 		}
 		rep.FilesScanned++
-		rel, err := filepath.Rel(inputRootAbs, fileAbs)
+		rel, err := filepath.Rel(validatedInputRootAbs, validatedFileAbs)
 		if err != nil {
 			return fmt.Errorf("relative input file path: %w", err)
 		}
 		cat := inferCategory(o.Category, rel)
-		f, err := openValidatedInputFile(inputRootAbs, fileAbs)
+		f, err := openValidatedInputFile(validatedInputRootAbs, validatedFileAbs)
 		if err != nil {
 			return err
 		}
@@ -667,14 +749,14 @@ func Run(o Options) (*Report, error) {
 			}
 			sourceComponent := SanitizeCategory(o.Source)
 			id := strings.ToLower(safeID.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%03d", sourceComponent, category, ruleType, i), "_"))
-			dst, err := safeJoinUnder(outputRootAbs, sourceComponent, category, ruleType, id+".yml")
+			validatedDstAbs, err := safeJoinUnder(validatedOutputRootAbs, sourceComponent, category, ruleType, id+".yml")
 			if err != nil {
 				return rep, err
 			}
-			if err := ensurePathUnder(outputRootAbs, dst); err != nil {
+			if err := ensurePathUnder(validatedOutputRootAbs, validatedDstAbs); err != nil {
 				return rep, err
 			}
-			rep.OutputFiles = append(rep.OutputFiles, dst)
+			rep.OutputFiles = append(rep.OutputFiles, validatedDstAbs)
 			if !o.DryRun {
 				en := true
 				rr := rules.Rule{ID: id, Type: ruleType, Category: category, RiskLevel: o.Risk, Action: o.Action, Score: 0, Description: "Imported from Sensitive-lexicon-compatible ruleset.", Source: o.Source, Tags: []string{"imported", o.Source, category, ruleType}, Enabled: &en}
@@ -690,7 +772,7 @@ func Run(o Options) (*Report, error) {
 				if err != nil {
 					return rep, err
 				}
-				if err := writeValidatedFile0600Under(outputRootAbs, dst, b); err != nil {
+				if err := writeValidatedFile0600Under(validatedOutputRootAbs, validatedDstAbs, b); err != nil {
 					return rep, err
 				}
 			}

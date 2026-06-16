@@ -25,8 +25,10 @@ func (j *JSONL) Append(e Entry) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	b, _ := json.Marshal(e)
-	_, err = f.Write(append(b, '\n'))
-	return err
+	encErr := json.NewEncoder(f).Encode(e)
+	closeErr := f.Close()
+	if encErr != nil {
+		return encErr
+	}
+	return closeErr
 }

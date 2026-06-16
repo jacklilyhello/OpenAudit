@@ -28,11 +28,13 @@ type importRequest struct {
 
 func RegisterImports(r gin.IRouter, cfg config.Config, batches *rulehistory.BatchStore) {
 	toOpt := func(req importRequest, dry bool) (importer.Options, error) {
-		in, err := resolveImportAPIPath(req.InputPath, cfg.Importer.DefaultInputDir, "input_path")
+		rawInputPath := strings.TrimSpace(req.InputPath)
+		rawOutputPath := strings.TrimSpace(req.OutputPath)
+		validatedInputPath, err := resolveImportAPIPath(rawInputPath, cfg.Importer.DefaultInputDir, "input_path")
 		if err != nil {
 			return importer.Options{}, err
 		}
-		out, err := resolveImportAPIPath(req.OutputPath, cfg.Importer.DefaultOutputDir, "output_path")
+		validatedOutputPath, err := resolveImportAPIPath(rawOutputPath, cfg.Importer.DefaultOutputDir, "output_path")
 		if err != nil {
 			return importer.Options{}, err
 		}
@@ -44,7 +46,7 @@ func RegisterImports(r gin.IRouter, cfg config.Config, batches *rulehistory.Batc
 		if max <= 0 {
 			max = cfg.Importer.MaxKeywordsPerFile
 		}
-		return importer.Options{Input: in, Output: out, Source: src, Type: req.Type, Category: req.Category, Risk: req.RiskLevel, Action: req.Action, Strict: req.Strict, MaxKeywordsPerFile: max, DryRun: dry, ReloadAfterImport: req.ReloadAfterImport}, nil
+		return importer.Options{Input: validatedInputPath, Output: validatedOutputPath, Source: src, Type: req.Type, Category: req.Category, Risk: req.RiskLevel, Action: req.Action, Strict: req.Strict, MaxKeywordsPerFile: max, DryRun: dry, ReloadAfterImport: req.ReloadAfterImport}, nil
 	}
 	r.POST("/imports/preview", func(c *gin.Context) {
 		var req importRequest
@@ -148,7 +150,8 @@ func safeAPIAbsPath(p string) (string, error) {
 }
 
 func hasParentTraversal(p string) bool {
-	for _, part := range strings.Split(filepath.ToSlash(p), "/") {
+	p = strings.ReplaceAll(filepath.ToSlash(p), "\\", "/")
+	for _, part := range strings.Split(p, "/") {
 		if part == ".." {
 			return true
 		}
@@ -183,8 +186,16 @@ func apiRelEscapesBase(rel string) bool {
 }
 
 func rejectAPISymlinkPath(pathAbs, field string) error {
-	// codeql[go/path-injection] -- pathAbs is an absolute path validated by safeAPIAbsPath and constrained with filepath.Rel before use for request candidates.
-	if info, err := os.Lstat(pathAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+	if pathAbs == "" || strings.ContainsRune(pathAbs, 0) || !filepath.IsAbs(pathAbs) {
+		return fmt.Errorf("%s path is not a validated absolute path", field)
+	}
+	validatedPathAbs := filepath.Clean(pathAbs)
+	if hasParentTraversal(validatedPathAbs) {
+		return fmt.Errorf("%s contains parent traversal", field)
+	}
+	// codeql[go/path-injection] -- validatedPathAbs is an absolute path returned by resolveImportAPIPath/safeAPIAbsPath; request candidates are filepath.Rel-constrained under the configured import root, reject NUL/parent traversal/absolute escape, and symlinks are rejected here before use.
+	info, err := os.Lstat(validatedPathAbs)
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%s symlink rejected", field)
 	}
 	return nil
