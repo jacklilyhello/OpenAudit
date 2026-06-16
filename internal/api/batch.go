@@ -16,7 +16,7 @@ func RegisterBatch(r gin.IRouter, e *engine.Engine) {
 		}
 		results := make([]engine.Result, 0, len(req.Items))
 		for _, item := range req.Items {
-			results = append(results, e.Audit(item, req.Options.Normalize))
+			results = append(results, e.AuditWithOptions(item, req.Options))
 		}
 		c.JSON(200, gin.H{"results": results})
 	})
