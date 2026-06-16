@@ -23,7 +23,7 @@ func Load(path string) (Config, error) {
 		if err != nil {
 			return cfg, err
 		}
-		// #nosec G304 -- configPath is an operator-supplied startup config path, not request-controlled input; cleanConfigPath validates it before reading.
+		// #nosec G304 G703 -- configPath is an operator-supplied startup config path, not request-controlled input; cleanConfigPath validates it before reading.
 		if b, err := os.ReadFile(configPath); err == nil {
 			if err := yaml.Unmarshal(b, &cfg); err != nil {
 				return cfg, err
