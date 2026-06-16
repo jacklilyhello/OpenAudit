@@ -257,3 +257,14 @@ Management endpoints are protected by the API-key middleware in production:
 * `POST /imports/run` writes imported rules, writes a report, optionally records history/reloads, and returns `{ "ok": true, "batch_id": "...", "report": {...}, "reload": {...} }`.
 
 Request fields include `input_path`, `output_path`, `source`, `type` (`auto`, `keyword`, `domain`, `regex`), `category`, `risk_level`, `action`, `strict`, `max_keywords_per_file`, plus `reload_after_import` and `record_history` for run. Unsafe empty/NUL/escaping paths and invalid strict imports return `400` with `ok:false`.
+
+Import path policy:
+
+- Empty `input_path` uses `importer.default_input_dir`.
+- Relative `input_path` resolves under `importer.default_input_dir`.
+- Absolute `input_path` is accepted only when it remains under `importer.default_input_dir`.
+- Empty, relative, and absolute `output_path` follow the same policy under `importer.default_output_dir`.
+- Symlink roots and symlink files/directories during traversal are rejected.
+- API callers cannot choose exact report file paths; `/imports/run` writes reports under `importer.report_dir` with server-generated batch file names.
+
+Custom rule, rollback, history, audit log, import batch, generated rule, and report files are written through the root-constrained safepath layer. Runtime directories use `0750`; generated/runtime files use `0600`.

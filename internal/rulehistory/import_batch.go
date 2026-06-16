@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openaudit/openaudit/internal/safepath"
 	"os"
-	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -50,10 +50,11 @@ func (b *BatchStore) AppendBatch(x ImportBatch) error {
 	if x.Timestamp.IsZero() {
 		x.Timestamp = time.Now().UTC()
 	}
-	if err := os.MkdirAll(filepath.Dir(b.path), 0750); err != nil {
+	root, path, err := validatedStoreFile(b.path)
+	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(b.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	f, err := root.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, safepath.RuntimeFilePerm)
 	if err != nil {
 		return err
 	}
@@ -67,7 +68,11 @@ func (b *BatchStore) AppendBatch(x ImportBatch) error {
 	return f.Close()
 }
 func (b *BatchStore) all() (batches []ImportBatch, err error) {
-	f, err := os.Open(b.path)
+	root, path, err := validatedStoreFile(b.path)
+	if err != nil {
+		return nil, err
+	}
+	f, err := root.OpenRead(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return []ImportBatch{}, nil
 	}

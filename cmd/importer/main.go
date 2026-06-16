@@ -43,7 +43,7 @@ func main() {
 		o.ReportPath = filepath.Join(*reportDir, importer.ReportFileName(rep.BatchID))
 	}
 	if o.ReportPath != "" {
-		if e := importer.WriteReport(rep, o.ReportPath, o.ReportFormat); e != nil {
+		if e := importer.WriteReportUnder(rep, *reportDir, o.ReportPath, o.ReportFormat); e != nil {
 			log.Printf("write report failed: %v", e)
 		}
 	}

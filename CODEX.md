@@ -679,3 +679,39 @@ Notes:
 - Full external Sensitive-lexicon content is not committed to the repository.
 - Imported rules should be generated locally by the operator.
 - Existing Phase 1/2/3/4/5/6/7 APIs remain backward compatible.
+
+## Commit pending
+
+Date: 2026-06-17
+
+Summary:
+* Implement Phase 9 filesystem security baseline
+* Add reusable root-constrained safepath package
+* Harden importer path validation, traversal, reports, and output writes
+* Harden rule history, rollback, custom rule, config, and logstore filesystem operations where practical
+* Standardize runtime directory permissions to 0750 and generated file permissions to 0600
+* Add atomic write helpers with explicit close-error handling
+* Reduce security scanner findings where practical without requiring CodeQL zero findings
+* Add tests for path safety, symlink rejection, permissions, and existing feature preservation
+* Update security/import/deployment/API documentation
+
+Files:
+* internal/safepath/...
+* internal/importer/...
+* internal/api/...
+* internal/rulehistory/...
+* internal/config/...
+* internal/logstore/...
+* cmd/importer/...
+* README.md
+* SECURITY.md
+* IMPORTING.md
+* DEPLOYMENT.md
+* API.md
+* CODEX.md
+
+Notes:
+* Append-only log entry for Phase 9.
+* Existing Phase 1/2/3/4/5/6/7/8 APIs remain backward compatible.
+* CodeQL clean output is not required for this phase; remaining path-flow findings should be documented with validated-path invariants.
+* Gosec findings are fixed where practical and remaining findings are reported.

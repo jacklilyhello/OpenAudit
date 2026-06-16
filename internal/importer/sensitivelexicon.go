@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/openaudit/openaudit/internal/rules"
+	"github.com/openaudit/openaudit/internal/safepath"
 	"gopkg.in/yaml.v3"
 	"io"
 	"io/fs"
@@ -29,20 +30,9 @@ type Options struct {
 
 type ValidatedOptions struct {
 	Options
-	inputRoot  validatedRoot
-	outputRoot validatedRoot
+	inputRoot  safepath.Root
+	outputRoot safepath.Root
 }
-
-type validatedRoot struct {
-	abs string
-}
-
-type validatedPath struct {
-	abs string
-}
-
-func (p validatedPath) String() string { return p.abs }
-func (r validatedRoot) String() string { return r.abs }
 
 type Result struct {
 	Files                                                                    []string
@@ -175,120 +165,8 @@ func InferType(path, line, override string) string {
 	}
 	return "keyword"
 }
-func cleanUserPath(p string) (string, error) {
-	p = strings.TrimSpace(p)
-	if p == "" {
-		return "", errors.New("path is empty")
-	}
-	if strings.ContainsRune(p, 0) {
-		return "", errors.New("path contains NUL")
-	}
-	if containsParentTraversal(p) {
-		return "", errors.New("path contains parent traversal")
-	}
-	cleaned := filepath.Clean(p)
-	if cleaned == "." {
-		return "", errors.New("path resolves to current directory")
-	}
-	if containsParentTraversal(cleaned) {
-		return "", errors.New("path contains parent traversal")
-	}
-	return cleaned, nil
-}
-
-func containsParentTraversal(p string) bool {
-	p = strings.ReplaceAll(filepath.ToSlash(p), "\\", "/")
-	for _, part := range strings.Split(p, "/") {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
-}
-
-func absCleanPath(p string) (string, error) {
-	cleaned, err := cleanUserPath(p)
-	if err != nil {
-		return "", err
-	}
-	abs, err := filepath.Abs(cleaned)
-	if err != nil {
-		return "", fmt.Errorf("absolute path: %w", err)
-	}
-	return filepath.Clean(abs), nil
-}
-
-func ensurePathUnder(baseAbs, candidateAbs string) error {
-	if !filepath.IsAbs(baseAbs) || !filepath.IsAbs(candidateAbs) {
-		return errors.New("path safety check requires absolute paths")
-	}
-	baseAbs = filepath.Clean(baseAbs)
-	candidateAbs = filepath.Clean(candidateAbs)
-	rel, err := filepath.Rel(baseAbs, candidateAbs)
-	if err != nil {
-		return fmt.Errorf("relative path check: %w", err)
-	}
-	if relEscapesBase(rel) || filepath.IsAbs(rel) {
-		return fmt.Errorf("path %q escapes base %q", candidateAbs, baseAbs)
-	}
-	return nil
-}
-
-func relEscapesBase(rel string) bool {
-	if rel == "." {
-		return false
-	}
-	if filepath.IsAbs(rel) {
-		return true
-	}
-	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
-}
-
 func isCommentLine(line string) bool {
 	return len(line) >= 1 && line[:1] == "#" || len(line) >= 2 && line[:2] == "//" || len(line) >= 1 && line[:1] == ";"
-}
-
-func safeJoinUnder(baseAbs string, elems ...string) (string, error) {
-	if !filepath.IsAbs(baseAbs) {
-		return "", errors.New("safe join base must be absolute")
-	}
-	cleanElems := make([]string, 0, len(elems))
-	for _, elem := range elems {
-		if strings.TrimSpace(elem) == "" {
-			return "", errors.New("empty path component")
-		}
-		if strings.ContainsRune(elem, 0) {
-			return "", errors.New("path component contains NUL")
-		}
-		if filepath.IsAbs(elem) {
-			return "", errors.New("absolute path component rejected")
-		}
-		if containsParentTraversal(elem) {
-			return "", errors.New("path component contains parent traversal")
-		}
-		cleaned := filepath.Clean(elem)
-		for _, part := range strings.Split(filepath.ToSlash(cleaned), "/") {
-			if part == ".." {
-				return "", errors.New("path component contains parent traversal")
-			}
-		}
-		cleanElems = append(cleanElems, cleaned)
-	}
-	joined := filepath.Join(append([]string{baseAbs}, cleanElems...)...)
-	joinedAbs, err := filepath.Abs(joined)
-	if err != nil {
-		return "", fmt.Errorf("absolute joined path: %w", err)
-	}
-	joinedAbs = filepath.Clean(joinedAbs)
-	if err := ensurePathUnder(baseAbs, joinedAbs); err != nil {
-		return "", err
-	}
-	return joinedAbs, nil
 }
 
 func NewValidatedOptions(inputPath, outputPath string, opts Options) (ValidatedOptions, error) {
@@ -316,303 +194,38 @@ func NewValidatedOptionsWithDefaults(rawInputPath, rawOutputPath, defaultInputRo
 
 func newValidatedOptions(opts Options) (ValidatedOptions, error) {
 	defaults(&opts)
-	inputRoot, err := newValidatedRoot(opts.Input, true, false)
+	inputRoot, err := safepath.NewRoot(opts.Input, safepath.RejectParentTraversal(), safepath.RequireExistingDir())
 	if err != nil {
 		return ValidatedOptions{}, err
 	}
-	outputRoot, err := newValidatedRoot(opts.Output, false, !opts.DryRun)
+	outputOpts := []safepath.Option{}
+	outputOpts = append(outputOpts, safepath.RejectParentTraversal())
+	if !opts.DryRun {
+		outputOpts = append(outputOpts, safepath.CreateRoot())
+	}
+	outputRoot, err := safepath.NewRoot(opts.Output, outputOpts...)
 	if err != nil {
 		return ValidatedOptions{}, err
 	}
-	displayInput, _ := cleanUserPath(opts.Input)
-	displayOutput, _ := cleanUserPath(opts.Output)
-	opts.Input = displayInput
-	opts.Output = displayOutput
+	opts.Input = inputRoot.String()
+	opts.Output = outputRoot.String()
 	return ValidatedOptions{Options: opts, inputRoot: inputRoot, outputRoot: outputRoot}, nil
 }
 
 func resolvePathUnderDefaultRoot(rawPath, defaultRoot, field string) (string, error) {
-	defaultRootAbs, err := absCleanPath(defaultRoot)
+	defaultRootPath, err := safepath.NewRoot(defaultRoot, safepath.RejectParentTraversal())
 	if err != nil {
 		return "", fmt.Errorf("%s default root: %w", field, err)
 	}
 	provided := strings.TrimSpace(rawPath)
 	if provided == "" {
-		return defaultRootAbs, nil
+		return defaultRootPath.String(), nil
 	}
-	if strings.ContainsRune(provided, 0) {
-		return "", fmt.Errorf("%s contains NUL", field)
-	}
-	if containsParentTraversal(provided) {
-		return "", fmt.Errorf("%s contains parent traversal", field)
-	}
-	var candidateAbs string
-	if filepath.IsAbs(provided) {
-		candidateAbs, err = absCleanPath(provided)
-	} else {
-		candidateAbs, err = safeJoinUnder(defaultRootAbs, provided)
-	}
+	candidate, err := defaultRootPath.Resolve(provided)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", field, err)
 	}
-	if err := ensurePathUnder(defaultRootAbs, candidateAbs); err != nil {
-		return "", fmt.Errorf("%s outside configured root: %w", field, err)
-	}
-	return candidateAbs, nil
-}
-
-func newValidatedRoot(raw string, requireExistingDir bool, create bool) (validatedRoot, error) {
-	rootAbs, err := absCleanPath(raw)
-	if err != nil {
-		return validatedRoot{}, err
-	}
-	root := validatedRoot{abs: rootAbs}
-	rootPath := root.path()
-	info, err := root.lstat(rootPath)
-	if err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return validatedRoot{}, errors.New("root symlink rejected")
-		}
-		if !info.IsDir() {
-			return validatedRoot{}, errors.New("root is not a directory")
-		}
-		return root, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return validatedRoot{}, fmt.Errorf("stat root: %w", err)
-	}
-	if requireExistingDir {
-		return validatedRoot{}, fmt.Errorf("stat root: %w", err)
-	}
-	if create {
-		if err := root.MkdirAll0750(rootPath); err != nil {
-			return validatedRoot{}, fmt.Errorf("create root: %w", err)
-		}
-	}
-	return root, nil
-}
-
-func (r validatedRoot) path() validatedPath {
-	return validatedPath{abs: r.abs}
-}
-
-func (r validatedRoot) ensureContains(p validatedPath) error {
-	if r.abs == "" || strings.ContainsRune(r.abs, 0) || !filepath.IsAbs(r.abs) {
-		return errors.New("validated root is invalid")
-	}
-	if p.abs == "" || strings.ContainsRune(p.abs, 0) || !filepath.IsAbs(p.abs) {
-		return errors.New("validated path is invalid")
-	}
-	return ensurePathUnder(r.abs, p.abs)
-}
-
-func (r validatedRoot) ValidateAbs(candidate string) (validatedPath, error) {
-	if candidate == "" {
-		return validatedPath{}, errors.New("path is empty")
-	}
-	if strings.ContainsRune(candidate, 0) {
-		return validatedPath{}, errors.New("path contains NUL")
-	}
-	if !filepath.IsAbs(candidate) {
-		return validatedPath{}, errors.New("path must be absolute")
-	}
-	candidateAbs := filepath.Clean(candidate)
-	if containsParentTraversal(candidateAbs) {
-		return validatedPath{}, errors.New("path contains parent traversal")
-	}
-	p := validatedPath{abs: candidateAbs}
-	if err := r.ensureContains(p); err != nil {
-		return validatedPath{}, err
-	}
-	return p, nil
-}
-
-func (r validatedRoot) JoinClean(elems ...string) (validatedPath, error) {
-	joinedAbs, err := safeJoinUnder(r.abs, elems...)
-	if err != nil {
-		return validatedPath{}, err
-	}
-	return r.ValidateAbs(joinedAbs)
-}
-
-func (r validatedRoot) joinUnderPath(base validatedPath, elems ...string) (validatedPath, error) {
-	if err := r.ensureContains(base); err != nil {
-		return validatedPath{}, err
-	}
-	joinedAbs, err := safeJoinUnder(base.abs, elems...)
-	if err != nil {
-		return validatedPath{}, err
-	}
-	return r.ValidateAbs(joinedAbs)
-}
-
-func (r validatedRoot) Parent(p validatedPath) (validatedPath, error) {
-	if err := r.ensureContains(p); err != nil {
-		return validatedPath{}, err
-	}
-	return r.ValidateAbs(filepath.Clean(filepath.Dir(p.abs)))
-}
-
-func (r validatedRoot) lstat(p validatedPath) (fs.FileInfo, error) {
-	if err := r.ensureContains(p); err != nil {
-		return nil, err
-	}
-	return os.Lstat(p.abs)
-}
-
-func (r validatedRoot) MkdirAll0750(p validatedPath) error {
-	if err := r.ensureContains(p); err != nil {
-		return err
-	}
-	if info, err := r.lstat(p); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("directory symlink rejected")
-		}
-		if !info.IsDir() {
-			return errors.New("path exists and is not a directory")
-		}
-		return nil
-	}
-	if err := os.MkdirAll(p.abs, 0750); err != nil {
-		return fmt.Errorf("create directory: %w", err)
-	}
-	return nil
-}
-
-func (r validatedRoot) OpenInputFile(p validatedPath) (*os.File, error) {
-	info, err := r.lstat(p)
-	if err != nil {
-		return nil, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("input file symlink rejected")
-	}
-	if info.IsDir() {
-		return nil, errors.New("input file is a directory")
-	}
-	return os.Open(p.abs) // #nosec G304,G305 -- p is a validatedPath with unexported fields, constrained under validatedRoot, and symlink/directories are rejected before opening.
-}
-
-func (r validatedRoot) WriteFile0600Atomic(p validatedPath, data []byte) error {
-	if err := r.ensureContains(p); err != nil {
-		return err
-	}
-	parent, err := r.Parent(p)
-	if err != nil {
-		return err
-	}
-	if err := r.MkdirAll0750(parent); err != nil {
-		return err
-	}
-	tmpPath, err := r.tempFilePath(parent)
-	if err != nil {
-		return err
-	}
-	tmp, err := r.openTempFile0600(tmpPath)
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = r.Remove(tmpPath)
-		}
-	}()
-	if _, err := tmp.Write(data); err != nil {
-		closeErr := tmp.Close()
-		if closeErr != nil {
-			return fmt.Errorf("write temp file: %w; close temp file: %v", err, closeErr)
-		}
-		return fmt.Errorf("write temp file: %w", err)
-	}
-	if err := tmp.Chmod(0600); err != nil {
-		closeErr := tmp.Close()
-		if closeErr != nil {
-			return fmt.Errorf("chmod temp file: %w; close temp file: %v", err, closeErr)
-		}
-		return fmt.Errorf("chmod temp file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
-	}
-	if err := r.RenameWithinRoot(tmpPath, p); err != nil {
-		return fmt.Errorf("rename temp file: %w", err)
-	}
-	cleanup = false
-	return nil
-}
-
-func (r validatedRoot) tempFilePath(parent validatedPath) (validatedPath, error) {
-	tmpName := fmt.Sprintf(".openaudit-import-%d.tmp", time.Now().UnixNano())
-	return r.joinUnderPath(parent, tmpName)
-}
-
-func (r validatedRoot) openTempFile0600(p validatedPath) (*os.File, error) {
-	if err := r.ensureContains(p); err != nil {
-		return nil, err
-	}
-	return os.OpenFile(p.abs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 -- p is a generated validatedPath under validatedRoot and is created with 0600 permissions.
-}
-
-func (r validatedRoot) Remove(p validatedPath) error {
-	if err := r.ensureContains(p); err != nil {
-		return err
-	}
-	return os.Remove(p.abs)
-}
-
-func (r validatedRoot) RenameWithinRoot(oldPath validatedPath, newPath validatedPath) error {
-	if err := r.ensureContains(oldPath); err != nil {
-		return err
-	}
-	if err := r.ensureContains(newPath); err != nil {
-		return err
-	}
-	return os.Rename(oldPath.abs, newPath.abs)
-}
-
-func (r validatedRoot) Walk(fn func(validatedPath, fs.DirEntry) error) error {
-	rootPath := r.path()
-	info, err := r.lstat(rootPath)
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("input root symlink rejected")
-	}
-	if !info.IsDir() {
-		return errors.New("input root is not a directory")
-	}
-	return r.walkDir(rootPath, fn)
-}
-
-func (r validatedRoot) walkDir(dir validatedPath, fn func(validatedPath, fs.DirEntry) error) error {
-	if err := r.ensureContains(dir); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(dir.abs)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		child, err := r.joinUnderPath(dir, entry.Name())
-		if err != nil {
-			return err
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlink input path rejected: %s", child.abs)
-		}
-		if entry.IsDir() {
-			if err := r.walkDir(child, fn); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := fn(child, entry); err != nil {
-			return err
-		}
-	}
-	return nil
+	return candidate.String(), nil
 }
 
 func ReportFileName(batchID string) string {
@@ -646,7 +259,7 @@ func Run(o Options) (*Report, error) {
 }
 
 func RunValidated(o ValidatedOptions) (*Report, error) {
-	if o.inputRoot.abs == "" || o.outputRoot.abs == "" {
+	if o.inputRoot.String() == "" || o.outputRoot.String() == "" {
 		return nil, errors.New("validated importer options are required")
 	}
 	start := time.Now()
@@ -658,7 +271,7 @@ func RunValidated(o ValidatedOptions) (*Report, error) {
 	}
 	groups := map[string][]string{}
 	seenBatch := map[string]bool{}
-	err := inputRoot.Walk(func(path validatedPath, d fs.DirEntry) error {
+	err := inputRoot.Walk(func(path safepath.Path, d fs.DirEntry) error {
 		if d.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink input path rejected: %s", path.String())
 		}
@@ -675,7 +288,7 @@ func RunValidated(o ValidatedOptions) (*Report, error) {
 			return fmt.Errorf("relative input file path: %w", err)
 		}
 		cat := inferCategory(o.Category, rel)
-		f, err := inputRoot.OpenInputFile(path)
+		f, err := inputRoot.OpenRead(path)
 		if err != nil {
 			return err
 		}
@@ -689,7 +302,9 @@ func RunValidated(o ValidatedOptions) (*Report, error) {
 				rep.InvalidLines++
 				rep.Warnings = append(rep.Warnings, "invalid line skipped in "+rel)
 				if o.Strict {
-					_ = f.Close()
+					if closeErr := f.Close(); closeErr != nil {
+						return fmt.Errorf("invalid line in %s; close input file: %w", rel, closeErr)
+					}
 					return errors.New("invalid line in " + rel)
 				}
 				continue
@@ -705,7 +320,9 @@ func RunValidated(o ValidatedOptions) (*Report, error) {
 				} else {
 					rep.InvalidLines++
 					if o.Strict {
-						_ = f.Close()
+						if closeErr := f.Close(); closeErr != nil {
+							return fmt.Errorf("invalid domain in %s; close input file: %w", rel, closeErr)
+						}
 						return errors.New("invalid domain in " + rel)
 					}
 					continue
@@ -717,7 +334,9 @@ func RunValidated(o ValidatedOptions) (*Report, error) {
 					rep.InvalidLines++
 					rep.Warnings = append(rep.Warnings, "invalid regex skipped in "+rel+": "+line)
 					if o.Strict {
-						_ = f.Close()
+						if closeErr := f.Close(); closeErr != nil {
+							return fmt.Errorf("invalid regex in %s: %w; close input file: %v", rel, err, closeErr)
+						}
 						return err
 					}
 					continue
@@ -786,7 +405,7 @@ func RunValidated(o ValidatedOptions) (*Report, error) {
 			}
 			sourceComponent := SanitizeCategory(o.Source)
 			id := strings.ToLower(safeID.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%03d", sourceComponent, category, ruleType, i), "_"))
-			dst, err := outputRoot.JoinClean(sourceComponent, category, ruleType, id+".yml")
+			dst, err := outputRoot.Join(sourceComponent, category, ruleType, id+".yml")
 			if err != nil {
 				return rep, err
 			}
@@ -806,7 +425,7 @@ func RunValidated(o ValidatedOptions) (*Report, error) {
 				if err != nil {
 					return rep, err
 				}
-				if err := outputRoot.WriteFile0600Atomic(dst, b); err != nil {
+				if err := outputRoot.WriteFileAtomic(dst, b); err != nil {
 					return rep, err
 				}
 			}
@@ -872,33 +491,24 @@ func WriteReportUnder(rep *Report, reportRoot, path, format string) error {
 	if err != nil {
 		return err
 	}
-	return root.WriteFile0600Atomic(target, b)
+	return root.WriteFileAtomic(target, b)
 }
 
-func validatedReportTarget(reportRoot, path string) (validatedRoot, validatedPath, error) {
-	targetAbs, err := absCleanPath(path)
-	if err != nil {
-		return validatedRoot{}, validatedPath{}, err
-	}
+func validatedReportTarget(reportRoot, path string) (safepath.Root, safepath.Path, error) {
 	if strings.TrimSpace(reportRoot) != "" {
-		root, err := newValidatedRoot(reportRoot, false, true)
+		root, err := safepath.NewRoot(reportRoot, safepath.RejectParentTraversal(), safepath.CreateRoot())
 		if err != nil {
-			return validatedRoot{}, validatedPath{}, fmt.Errorf("report root: %w", err)
+			return safepath.Root{}, safepath.Path{}, fmt.Errorf("report root: %w", err)
 		}
-		target, err := root.ValidateAbs(targetAbs)
+		target, err := root.Resolve(path)
 		if err != nil {
-			return validatedRoot{}, validatedPath{}, err
+			return safepath.Root{}, safepath.Path{}, err
 		}
 		return root, target, nil
 	}
-	parentAbs := filepath.Clean(filepath.Dir(targetAbs))
-	root, err := newValidatedRoot(parentAbs, false, true)
+	root, target, err := safepath.NewFileTarget(path, safepath.CreateRoot())
 	if err != nil {
-		return validatedRoot{}, validatedPath{}, err
-	}
-	target, err := root.ValidateAbs(targetAbs)
-	if err != nil {
-		return validatedRoot{}, validatedPath{}, err
+		return safepath.Root{}, safepath.Path{}, err
 	}
 	return root, target, nil
 }

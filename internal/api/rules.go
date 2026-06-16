@@ -5,6 +5,7 @@ import (
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/rulehistory"
 	"github.com/openaudit/openaudit/internal/rules"
+	"github.com/openaudit/openaudit/internal/safepath"
 	"gopkg.in/yaml.v3"
 	"net/http"
 	"os"
@@ -124,21 +125,23 @@ type updateReq struct {
 	Patch map[string]any `json:"patch"`
 }
 
-func customPath(root, id string) (string, error) {
+func customPath(root, id string) (safepath.Root, safepath.Path, error) {
 	return safeRulePathUnderCustomRoot(root, id)
 }
 
-func safeRulePathUnderCustomRoot(root, id string) (string, error) {
+func safeRulePathUnderCustomRoot(root, id string) (safepath.Root, safepath.Path, error) {
 	if err := validateCustomRuleID(id); err != nil {
-		return "", err
+		return safepath.Root{}, safepath.Path{}, err
 	}
-	customRoot := filepath.Clean(filepath.Join(root, "custom"))
-	p := filepath.Clean(filepath.Join(customRoot, id+".yml"))
-	rel, err := filepath.Rel(customRoot, p)
-	if err != nil || rel == "." || ruleRelEscapesBase(rel) || filepath.IsAbs(rel) || strings.ContainsRune(rel, '\x00') {
-		return "", os.ErrPermission
+	customRoot, err := safepath.NewRoot(filepath.Join(root, "custom"))
+	if err != nil {
+		return safepath.Root{}, safepath.Path{}, err
 	}
-	return p, nil
+	p, err := customRoot.Join(id + ".yml")
+	if err != nil {
+		return safepath.Root{}, safepath.Path{}, err
+	}
+	return customRoot, p, nil
 }
 
 func validateCustomRuleID(id string) error {
@@ -168,36 +171,16 @@ func hasRuleParentTraversal(p string) bool {
 	return false
 }
 
-func ruleRelEscapesBase(rel string) bool {
-	if rel == "." {
-		return false
-	}
-	if filepath.IsAbs(rel) {
-		return true
-	}
-	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
+func readCustomRuleFile(root safepath.Root, p safepath.Path) ([]byte, error) {
+	return root.ReadFile(p)
 }
 
-func readCustomRuleFile(p string) ([]byte, error) {
-	// #nosec G304 -- p is produced by safeRulePathUnderCustomRoot and constrained with filepath.Rel to the API-managed custom rules directory.
-	return os.ReadFile(p)
+func writeCustomRuleFile(root safepath.Root, p safepath.Path, b []byte) error {
+	return root.WriteFileAtomic(p, b)
 }
 
-func writeCustomRuleFile(p string, b []byte) error {
-	if err := os.MkdirAll(filepath.Dir(p), 0750); err != nil {
-		return err
-	}
-	// #nosec G304 -- p is produced by safeRulePathUnderCustomRoot and constrained with filepath.Rel to the API-managed custom rules directory.
-	return os.WriteFile(p, b, 0600)
-}
-
-func restoreCustomRuleFile(p string, b []byte) error {
-	return writeCustomRuleFile(p, b)
+func restoreCustomRuleFile(root safepath.Root, p safepath.Path, b []byte) error {
+	return writeCustomRuleFile(root, p, b)
 }
 func createRule(c *gin.Context, e *engine.Engine, h HistoryServices) {
 	var req createReq
@@ -209,27 +192,30 @@ func createRule(c *gin.Context, e *engine.Engine, h HistoryServices) {
 		writeError(c, 400, "invalid_request", "path traversal rejected", nil)
 		return
 	}
-	p, err := customPath(e.Root(), req.Rule.ID)
+	customRoot, p, err := customPath(e.Root(), req.Rule.ID)
 	if err != nil {
 		writeError(c, 400, "invalid_request", "invalid rule id", nil)
 		return
 	}
-	if _, err := os.Stat(p); err == nil {
+	if _, err := readCustomRuleFile(customRoot, p); err == nil {
 		writeError(c, 409, "conflict", "rule already exists", nil)
+		return
+	} else if err != nil && !os.IsNotExist(err) {
+		writeError(c, 500, "read_failed", err.Error(), nil)
 		return
 	}
 	if b, err := yaml.Marshal(req.Rule); err == nil {
-		if err := writeCustomRuleFile(p, b); err != nil {
+		if err := writeCustomRuleFile(customRoot, p, b); err != nil {
 			writeError(c, 500, "write_failed", err.Error(), nil)
 			return
 		}
 		if err := e.Reload(); err != nil {
-			_ = os.Remove(p)
+			_ = customRoot.Remove(p)
 			writeError(c, 400, "reload_failed", err.Error(), nil)
 			return
 		}
 		if h.Changes != nil {
-			entry := baseChange(c, h, req.Rule.ID, rulehistory.ActionCreate, "", string(b), p)
+			entry := baseChange(c, h, req.Rule.ID, rulehistory.ActionCreate, "", string(b), p.String())
 			entry.RuleType = req.Rule.Type
 			entry.Category = req.Rule.Category
 			entry.Source = req.Rule.Source
@@ -241,12 +227,12 @@ func createRule(c *gin.Context, e *engine.Engine, h HistoryServices) {
 	bad(c, "invalid rule")
 }
 func updateRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) {
-	p, err := customPath(e.Root(), id)
+	customRoot, p, err := customPath(e.Root(), id)
 	if err != nil {
 		bad(c, "invalid rule id")
 		return
 	}
-	b, err := readCustomRuleFile(p)
+	b, err := readCustomRuleFile(customRoot, p)
 	if err != nil {
 		writeError(c, 400, "invalid_request", "only custom API-managed rules can be updated or deleted in Phase 4", nil)
 		return
@@ -264,12 +250,12 @@ func updateRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 		bad(c, "invalid rule")
 		return
 	}
-	if err := writeCustomRuleFile(p, nb); err != nil {
+	if err := writeCustomRuleFile(customRoot, p, nb); err != nil {
 		writeError(c, 500, "write_failed", err.Error(), nil)
 		return
 	}
 	if err := e.Reload(); err != nil {
-		if restoreErr := restoreCustomRuleFile(p, b); restoreErr != nil {
+		if restoreErr := restoreCustomRuleFile(customRoot, p, b); restoreErr != nil {
 			writeError(c, 400, "reload_failed", err.Error()+"; restore failed: "+restoreErr.Error(), nil)
 			return
 		}
@@ -282,7 +268,7 @@ func updateRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 	}
 	if h.Changes != nil {
 		act := detectAction(b, nb)
-		entry := baseChange(c, h, id, act, string(b), string(nb), p)
+		entry := baseChange(c, h, id, act, string(b), string(nb), p.String())
 		entry.RuleType = rule.Type
 		entry.Category = rule.Category
 		entry.Source = rule.Source
@@ -327,22 +313,22 @@ func toStrings(v any) []string {
 	return out
 }
 func deleteRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) {
-	p, err := customPath(e.Root(), id)
+	customRoot, p, err := customPath(e.Root(), id)
 	if err != nil {
 		bad(c, "invalid rule id")
 		return
 	}
-	b, err := readCustomRuleFile(p)
+	b, err := readCustomRuleFile(customRoot, p)
 	if err != nil {
 		writeError(c, 400, "invalid_request", "only custom API-managed rules can be updated or deleted in Phase 4", nil)
 		return
 	}
-	if err := os.Remove(p); err != nil {
+	if err := customRoot.Remove(p); err != nil {
 		writeError(c, 500, "delete_failed", err.Error(), nil)
 		return
 	}
 	if err := e.Reload(); err != nil {
-		if restoreErr := restoreCustomRuleFile(p, b); restoreErr != nil {
+		if restoreErr := restoreCustomRuleFile(customRoot, p, b); restoreErr != nil {
 			writeError(c, 400, "reload_failed", err.Error()+"; restore failed: "+restoreErr.Error(), nil)
 			return
 		}
@@ -356,7 +342,7 @@ func deleteRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 	if h.Changes != nil {
 		var oldRule rules.Rule
 		_ = yaml.Unmarshal(b, &oldRule)
-		entry := baseChange(c, h, id, rulehistory.ActionDelete, string(b), "", p)
+		entry := baseChange(c, h, id, rulehistory.ActionDelete, string(b), "", p.String())
 		entry.RuleType = oldRule.Type
 		entry.Category = oldRule.Category
 		entry.Source = oldRule.Source

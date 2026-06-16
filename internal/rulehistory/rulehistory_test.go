@@ -1,6 +1,12 @@
 package rulehistory
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/openaudit/openaudit/internal/safepath"
+)
 
 func TestTextDiff(t *testing.T) {
 	d := TextDiff("enabled: true\nkeywords: old\n", "enabled: false\nkeywords: old\nkeywords: new\n")
@@ -13,10 +19,12 @@ func TestTextDiff(t *testing.T) {
 	}
 }
 func TestStoreAppendListGetFiltersAndMax(t *testing.T) {
-	s := New(t.TempDir()+"/h.jsonl", 2)
+	path := filepath.Join(t.TempDir(), "history", "h.jsonl")
+	s := New(path, 2)
 	_ = s.Append(Change{ChangeID: "1", Action: ActionCreate, RuleID: "a", Actor: "api"})
 	_ = s.Append(Change{ChangeID: "2", Action: ActionUpdate, RuleID: "b", Actor: "api"})
 	_ = s.Append(Change{ChangeID: "3", Action: ActionDelete, RuleID: "a", Actor: "api"})
+	assertRuntimeFileAndDirModes(t, path)
 	xs, count, err := s.List(Filter{Limit: 10})
 	if err != nil || count != 2 || len(xs) != 2 {
 		t.Fatalf("list %d %d %v", count, len(xs), err)
@@ -34,15 +42,35 @@ func TestStoreAppendListGetFiltersAndMax(t *testing.T) {
 	}
 }
 func TestBatchStore(t *testing.T) {
-	b := NewBatchStore(t.TempDir() + "/b.jsonl")
+	path := filepath.Join(t.TempDir(), "batches", "b.jsonl")
+	b := NewBatchStore(path)
 	if err := b.AppendBatch(ImportBatch{BatchID: "x", Source: "s", Status: "dry_run", DryRun: true}); err != nil {
 		t.Fatal(err)
 	}
+	assertRuntimeFileAndDirModes(t, path)
 	xs, count, err := b.List(BatchFilter{Status: "dry_run"})
 	if err != nil || count != 1 || xs[0].BatchID != "x" {
 		t.Fatalf("list %+v %d %v", xs, count, err)
 	}
 	if _, ok, _ := b.Get("x"); !ok {
 		t.Fatal("get failed")
+	}
+}
+
+func assertRuntimeFileAndDirModes(t *testing.T, path string) {
+	t.Helper()
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fileInfo.Mode().Perm(); got != safepath.RuntimeFilePerm {
+		t.Fatalf("%s mode = %o want %o", path, got, safepath.RuntimeFilePerm)
+	}
+	dirInfo, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != safepath.RuntimeDirPerm {
+		t.Fatalf("%s mode = %o want %o", filepath.Dir(path), got, safepath.RuntimeDirPerm)
 	}
 }

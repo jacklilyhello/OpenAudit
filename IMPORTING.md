@@ -61,6 +61,8 @@ curl -X POST http://localhost:8080/rules/reload -H 'Authorization: Bearer dev-ke
 
 Use `external-rules/` for clones and `data/imported/` for generated rules only when you intentionally want the service to load them. Runtime import reports can go under `storage/imports/`; generated JSON/log files there are ignored by git.
 
+Importer filesystem paths are root-constrained. Input roots must exist, must not be symlink roots, and traversal/NUL paths are rejected. Output roots and report roots are validated before writes. Generated directories use `0750`, and generated YAML/report/history files use `0600`.
+
 ## Import Batch History
 
 The importer can record local JSONL batch metadata without committing large external rulesets:
@@ -73,6 +75,7 @@ Flags:
 
 - `--record-history` writes an import batch record.
 - `--history-path` sets the JSONL file path; default is `./storage/rule-history/import-batches.jsonl`.
+- `--report-dir` sets the report root; explicit `--report` paths are validated under this root.
 - `--reload-url` optionally calls a reload endpoint after import, for example `http://localhost:8080/rules/reload`.
 - `--api-key` sends `X-API-Key` for optional reload requests.
 - `--dry-run` records status `dry_run` when history recording is enabled and does not write output files.
@@ -100,3 +103,5 @@ go run ./cmd/importer --input ./external-rules/Sensitive-lexicon --output ./data
 ```
 
 The importer infers categories from Sensitive-lexicon-compatible directory/file names, maps common Chinese categories to safe English names, infers `keyword`, `domain`, and `regex` rules, removes duplicates by normalized line, skips comments/blanks, reports invalid regex/NUL/overlong lines, and writes deterministic files under `data/imported/<source>/<category>/<type>/`. Use `--strict` to fail on invalid lines, `--dedupe-scope batch|file`, and `--max-line-runes` to tune validation. Reports are JSON by default and batch records are JSONL. `external-rules/`, runtime reports, and private generated artifacts should not be committed.
+
+For `/imports/preview` and `/imports/run`, an empty `input_path` uses `importer.default_input_dir`; a relative `input_path` resolves under that root; an absolute `input_path` is accepted only when it remains under that root. `output_path` follows the same policy under `importer.default_output_dir`. API callers cannot choose exact report file paths; reports are generated under `importer.report_dir` using server-generated batch names.

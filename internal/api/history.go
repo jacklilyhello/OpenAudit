@@ -7,11 +7,10 @@ import (
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/rulehistory"
 	"github.com/openaudit/openaudit/internal/rules"
+	"github.com/openaudit/openaudit/internal/safepath"
 	"github.com/openaudit/openaudit/internal/security"
 	"gopkg.in/yaml.v3"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
 type HistoryServices struct {
@@ -106,7 +105,7 @@ func ruleDiff(c *gin.Context, s *rulehistory.Store, id string) {
 	c.JSON(200, items[0].Diff)
 }
 func rollbackRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) {
-	p, err := validatedCustomRollbackPath(e.Root(), id)
+	customRoot, p, err := validatedCustomRollbackPath(e.Root(), id)
 	if err != nil {
 		writeError(c, 400, "unsupported", "rollback is only supported for API-managed custom rules in Phase 7", nil)
 		return
@@ -125,7 +124,7 @@ func rollbackRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string
 		writeError(c, 404, "not_found", "history entry not found", nil)
 		return
 	}
-	cur, curExists, err := readRollbackRule(p)
+	cur, curExists, err := readRollbackRule(customRoot, p)
 	if err != nil {
 		writeError(c, 500, "rollback_failed", err.Error(), nil)
 		return
@@ -134,12 +133,12 @@ func rollbackRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string
 	if ch.Before == "" && ch.Action == rulehistory.ActionCreate {
 		target = nil
 	}
-	if err := writeRollbackTarget(p, target); err != nil {
+	if err := writeRollbackTarget(customRoot, p, target); err != nil {
 		writeError(c, 500, "rollback_failed", err.Error(), nil)
 		return
 	}
 	if err := e.Reload(); err != nil {
-		if restoreErr := restoreRollbackRule(p, cur, curExists); restoreErr != nil {
+		if restoreErr := restoreRollbackRule(customRoot, p, cur, curExists); restoreErr != nil {
 			writeError(c, 400, "reload_failed", fmt.Sprintf("%s; restore failed: %v", err.Error(), restoreErr), nil)
 			return
 		}
@@ -150,12 +149,12 @@ func rollbackRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string
 		writeError(c, 400, "reload_failed", err.Error(), nil)
 		return
 	}
-	after, _, err := readRollbackRule(p)
+	after, _, err := readRollbackRule(customRoot, p)
 	if err != nil {
 		writeError(c, 500, "rollback_failed", err.Error(), nil)
 		return
 	}
-	entry := baseChange(c, h, id, rulehistory.ActionRollback, string(cur), string(after), p)
+	entry := baseChange(c, h, id, rulehistory.ActionRollback, string(cur), string(after), p.String())
 	entry.Note = req.Note
 	entry.ReloadSuccess = true
 	_ = h.Changes.Append(entry)
@@ -164,22 +163,16 @@ func rollbackRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string
 	c.JSON(200, gin.H{"ok": true, "rule": r, "reload_success": true})
 }
 
-func validatedCustomRollbackPath(root, id string) (string, error) {
-	if id == "" || strings.ContainsRune(id, '\x00') || strings.Contains(id, "/") || strings.Contains(id, "\\") || strings.Contains(id, "..") || filepath.IsAbs(id) {
-		return "", errors.New("invalid rule id")
+func validatedCustomRollbackPath(root, id string) (safepath.Root, safepath.Path, error) {
+	customRoot, p, err := customPath(root, id)
+	if err != nil {
+		return safepath.Root{}, safepath.Path{}, errors.New("invalid rollback path")
 	}
-	customRoot := filepath.Clean(filepath.Join(root, "custom"))
-	p := filepath.Clean(filepath.Join(customRoot, id+".yml"))
-	rel, err := filepath.Rel(customRoot, p)
-	if err != nil || rel == "." || historyRelEscapesBase(rel) || filepath.IsAbs(rel) || strings.ContainsRune(rel, '\x00') {
-		return "", errors.New("invalid rollback path")
-	}
-	return p, nil
+	return customRoot, p, nil
 }
 
-func readRollbackRule(p string) ([]byte, bool, error) {
-	// #nosec G304 -- p is produced by validatedCustomRollbackPath and constrained to the API-managed custom rules directory.
-	b, err := os.ReadFile(p)
+func readRollbackRule(root safepath.Root, p safepath.Path) ([]byte, bool, error) {
+	b, err := root.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, false, nil
 	}
@@ -189,30 +182,24 @@ func readRollbackRule(p string) ([]byte, bool, error) {
 	return b, true, nil
 }
 
-func writeRollbackTarget(p string, target []byte) error {
+func writeRollbackTarget(root safepath.Root, p safepath.Path, target []byte) error {
 	if len(target) == 0 {
-		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := root.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0750); err != nil {
-		return err
-	}
-	return os.WriteFile(p, target, 0600)
+	return root.WriteFileAtomic(p, target)
 }
 
-func restoreRollbackRule(p string, cur []byte, curExists bool) error {
+func restoreRollbackRule(root safepath.Root, p safepath.Path, cur []byte, curExists bool) error {
 	if !curExists {
-		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := root.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0750); err != nil {
-		return err
-	}
-	return os.WriteFile(p, cur, 0600)
+	return root.WriteFileAtomic(p, cur)
 }
 func baseChange(c *gin.Context, h HistoryServices, id string, act rulehistory.Action, before, after, path string) rulehistory.Change {
 	actor := c.Request.Header.Get("Cf-Access-Authenticated-User-Email")
@@ -220,8 +207,4 @@ func baseChange(c *gin.Context, h HistoryServices, id string, act rulehistory.Ac
 		actor = "api"
 	}
 	return rulehistory.Change{Actor: actor, Action: act, RuleID: id, Before: before, After: after, Diff: rulehistory.TextDiff(before, after), FilePath: path, ReloadSuccess: true, RemoteAddr: security.ClientIP(c.Request, h.TrustedProxies), UserAgent: c.Request.UserAgent()}
-}
-
-func historyRelEscapesBase(rel string) bool {
-	return rel == ".." || len(rel) > 3 && rel[:3] == ".."+string(os.PathSeparator)
 }
