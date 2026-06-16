@@ -1,18 +1,50 @@
+app:
+  env: "development"
 server:
   addr: ":8080"
   read_timeout_seconds: 10
   write_timeout_seconds: 30
+  trusted_proxies: ["127.0.0.1/32", "::1/128"]
 rules:
   data_dir: "./data"
   auto_reload: false
 admin:
   enabled: true
   path: "/admin"
+  allow_local: true
+  allow_private_networks: true
+  require_cloudflare_access: false
+  cloudflare_access_aud: ""
+  cloudflare_access_team_domain: ""
+  trusted_proxies: ["127.0.0.1/32", "::1/128"]
+  allowed_cidrs: ["127.0.0.1/32", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+cloudflare_access:
+  enabled: false
+  verify_jwt: false
+  team_domain: ""
+  aud: ""
+  allowed_emails: []
+  allowed_domains: []
 security:
   api_key_enabled: false
   api_keys: ["dev-key"]
-  protected_paths: ["/rules/reload", "/rules/create", "/rules/update", "/rules/delete", "/logs"]
+  protected_paths: ["/rules/reload", "/rules/create", "/rules/update", "/rules/delete", "/logs", "/config"]
   allow_admin_without_key: true
+  protect_audit_api: false
+  protect_management_api: true
+security_headers:
+  enabled: true
+cors:
+  enabled: false
+  allowed_origins: []
+  allowed_methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+  allowed_headers: ["Authorization", "Content-Type", "X-API-Key"]
+  allow_credentials: false
+rate_limit:
+  enabled: true
+  audit_per_minute: 120
+  management_per_minute: 30
+  admin_per_minute: 60
 audit_log:
   enabled: true
   path: "./storage/audit.log"
@@ -23,3 +55,4 @@ limits:
   max_text_runes: 10000
   max_batch_items: 100
   max_hits: 100
+  max_body_bytes: 1048576

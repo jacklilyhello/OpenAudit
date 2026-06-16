@@ -108,3 +108,11 @@ Dependabot and GitHub secret scanning should be enabled in repository settings w
 - Larger external ruleset import workflows without committing private/local data.
 - Release packaging, checksums, and optional GitHub Release publication.
 - Optional future AI/OCR/database features behind existing interfaces.
+
+## Phase 6 production access security
+
+OpenAudit now has explicit environment modes. `app.env` defaults to `development`; set `OPENAUDIT_ENV=production` for production and `OPENAUDIT_ENV=test` for test automation. Unknown modes fail startup. In production, management APIs must be protected by API keys unless `OPENAUDIT_ALLOW_UNSAFE_PRODUCTION=true` is deliberately set.
+
+Production API keys should come from environment/secret configuration: `OPENAUDIT_API_KEYS` accepts comma-separated keys and `OPENAUDIT_ADMIN_API_KEY` adds one more administrative key. Development sample keys such as `dev-key` are accepted only for development or test and are rejected as production-only credentials.
+
+The `/admin` dashboard is intended for local/private/tunnel access only. In production, direct public access is denied unless traffic arrives from configured `admin.allowed_cidrs`, Cloudflare Access header mode is enabled and headers are present, or the unsafe production override is explicitly enabled. The recommended public deployment model is a VPS origin behind Cloudflare Tunnel/Access rather than exposing `/admin` or an admin DNS record directly to the VPS origin IP.
