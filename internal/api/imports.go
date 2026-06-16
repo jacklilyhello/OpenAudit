@@ -98,8 +98,8 @@ func resolveImportAPIPath(requestPath, defaultRoot, field string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("%s default root: %w", field, err)
 	}
-	if info, err := os.Lstat(rootAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return "", fmt.Errorf("%s default root symlink rejected", field)
+	if err := rejectAPISymlinkPath(rootAbs, field+" default root"); err != nil {
+		return "", err
 	}
 	provided := strings.TrimSpace(requestPath)
 	if provided == "" {
@@ -123,8 +123,8 @@ func resolveImportAPIPath(requestPath, defaultRoot, field string) (string, error
 	if err := ensureAPIPathUnder(rootAbs, candidateAbs); err != nil {
 		return "", fmt.Errorf("%s outside configured root: %w", field, err)
 	}
-	if info, err := os.Lstat(candidateAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return "", fmt.Errorf("%s symlink rejected", field)
+	if err := rejectAPISymlinkPath(candidateAbs, field); err != nil {
+		return "", err
 	}
 	return candidateAbs, nil
 }
@@ -180,4 +180,12 @@ func apiRelEscapesBase(rel string) bool {
 		}
 	}
 	return false
+}
+
+func rejectAPISymlinkPath(pathAbs, field string) error {
+	// codeql[go/path-injection] -- pathAbs is an absolute path validated by safeAPIAbsPath and constrained with filepath.Rel before use for request candidates.
+	if info, err := os.Lstat(pathAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s symlink rejected", field)
+	}
+	return nil
 }
