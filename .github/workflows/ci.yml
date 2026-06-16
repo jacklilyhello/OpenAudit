@@ -2,13 +2,12 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
 
 jobs:
-  test:
-    name: Go test and build
+  ci:
+    name: Format, vet, test, build, smoke
     runs-on: ubuntu-latest
 
     steps:
@@ -18,21 +17,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.x"
+          go-version: "1.23.x"
           cache: true
 
       - name: Check formatting
         run: |
-          test -z "$(gofmt -l .)"
+          test -z "$(gofmt -l $(find . -name '*.go' -not -path './vendor/*'))"
 
       - name: Run go vet
-        run: |
-          go vet ./...
+        run: go vet ./...
 
       - name: Run tests
-        run: |
-          go test ./...
+        run: go test ./...
 
-      - name: Build
-        run: |
-          go build ./...
+      - name: Build all packages
+        run: go build ./...
+
+      - name: Run smoke test
+        run: ./scripts/smoke.sh

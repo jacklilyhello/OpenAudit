@@ -1,0 +1,13 @@
+.git
+.github
+bin
+dist
+coverage.out
+*.test
+.env
+external-rules
+storage/*.log
+storage/*.jsonl
+storage/*.db
+storage/imports/*.json
+storage/imports/*.log

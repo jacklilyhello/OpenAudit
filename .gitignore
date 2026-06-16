@@ -33,3 +33,17 @@ go.work.sum
 storage/*.log
 storage/*.jsonl
 storage/*.db
+
+# OpenAudit Phase 5 build/runtime artifacts
+bin/
+dist/
+coverage.out
+*.test
+.env
+storage/*.log
+storage/*.jsonl
+storage/*.db
+external-rules/
+storage/imports/*.json
+storage/imports/*.log
+!storage/.gitkeep
