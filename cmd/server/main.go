@@ -54,6 +54,7 @@ func main() {
 	}
 	api.RegisterRules(r, e, hist)
 	api.RegisterHistory(r, e, hist)
+	api.RegisterImports(r, cfg, hist.Batches)
 	api.RegisterLogs(r, logs)
 	if cfg.Admin.Enabled {
 		admin.RegisterAt(r, cfg.Admin.Path)

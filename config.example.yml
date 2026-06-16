@@ -63,3 +63,15 @@ rule_history:
   import_batches_path: "./storage/rule-history/import-batches.jsonl"
   max_entries: 5000
   snapshot_dir: "./storage/rule-history/snapshots"
+
+importer:
+  default_input_dir: "./external-rules"
+  default_output_dir: "./data/imported"
+  report_dir: "./storage/imports/reports"
+  batch_history_path: "./storage/rule-history/import-batches.jsonl"
+  max_keywords_per_file: 10000
+  default_source: "external"
+  auto_reload_after_import: false
+  allow_remote_clone: false
+  allowed_clone_hosts:
+    - "github.com"

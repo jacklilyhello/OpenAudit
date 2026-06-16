@@ -120,3 +120,7 @@ The `/admin` dashboard is intended for local/private/tunnel access only. In prod
 ## Phase 7 Rule Versioning
 
 OpenAudit includes local file-backed rule change history for API-managed custom rules. Rule create, update, enable/disable, delete, and rollback operations can be recorded under `storage/rule-history/`, and import runs can record batch metadata without committing full external rulesets. Rollback is supported for API-managed custom rules under `data/custom/<rule_id>.yml` only. See [API.md](API.md) for history, diff, rollback, import batch, and change stats endpoints.
+
+## Phase 8 external ruleset imports
+
+OpenAudit supports committed demo rules under `data/` and operator-managed external rulesets imported into `data/imported/`. Large/private sources such as Sensitive-lexicon should be cloned into `external-rules/` and imported locally; do not commit generated private rulesets. See [IMPORTING.md](IMPORTING.md).

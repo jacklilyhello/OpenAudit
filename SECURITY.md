@@ -44,3 +44,7 @@ API keys are normalized by trimming whitespace, empty values are ignored, and pr
 ## Rule History Security
 
 Rule history and rollback endpoints are protected management APIs in production. History entries must not contain API keys, secrets, or authorization headers; OpenAudit records actor metadata, remote address, user agent, rule YAML, diffs, and reload status only. API keys must not be logged. Rollback can restore API-managed custom rules and should be limited to trusted operators. Cloudflare Access/admin protection guidance remains applicable; when the Cloudflare Access email header is present it is used as the rule-change actor.
+
+## External ruleset import security
+
+The Phase 8 importer validates local paths, rejects NUL/empty paths, prevents generated output from escaping the configured output directory, rejects symlink traversal, and uses restricted directory/file permissions. External rules are trusted operator input: review sources before import, use dry-run reports, and enable `--strict` for CI. Regex rules can be malicious or expensive; invalid regex is reported and skipped unless strict mode fails the import. Import APIs are protected management APIs and remote clone support remains disabled by default.
