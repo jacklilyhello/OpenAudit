@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/openaudit/openaudit/internal/engine"
+	"github.com/openaudit/openaudit/internal/rulehistory"
 	"github.com/openaudit/openaudit/internal/rules"
 	"gopkg.in/yaml.v3"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 	"strings"
 )
 
-func RegisterRules(r gin.IRouter, e *engine.Engine) {
+func RegisterRules(r gin.IRouter, e *engine.Engine, h HistoryServices) {
 	r.GET("/rules/stats", func(c *gin.Context) { c.JSON(200, e.Stats()) })
 	r.POST("/rules/reload", func(c *gin.Context) {
 		if err := e.Reload(); err != nil {
@@ -26,9 +27,9 @@ func RegisterRules(r gin.IRouter, e *engine.Engine) {
 	r.GET("/rules/categories", func(c *gin.Context) { statRules(c, e, "category") })
 	r.GET("/rules/sources", func(c *gin.Context) { statRules(c, e, "source") })
 	r.GET("/rules/:id", func(c *gin.Context) { getRule(c, e, c.Param("id")) })
-	r.POST("/rules/create", func(c *gin.Context) { createRule(c, e) })
-	r.PATCH("/rules/update/:id", func(c *gin.Context) { updateRule(c, e, c.Param("id")) })
-	r.DELETE("/rules/delete/:id", func(c *gin.Context) { deleteRule(c, e, c.Param("id")) })
+	r.POST("/rules/create", func(c *gin.Context) { createRule(c, e, h) })
+	r.PATCH("/rules/update/:id", func(c *gin.Context) { updateRule(c, e, h, c.Param("id")) })
+	r.DELETE("/rules/delete/:id", func(c *gin.Context) { deleteRule(c, e, h, c.Param("id")) })
 }
 func sortedRules(e *engine.Engine) []rules.Rule {
 	rs := e.Rules()
@@ -129,7 +130,7 @@ func customPath(root, id string) (string, error) {
 	}
 	return filepath.Join(root, "custom", id+".yml"), nil
 }
-func createRule(c *gin.Context, e *engine.Engine) {
+func createRule(c *gin.Context, e *engine.Engine, h HistoryServices) {
 	var req createReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bad(c, err.Error())
@@ -161,12 +162,19 @@ func createRule(c *gin.Context, e *engine.Engine) {
 			writeError(c, 400, "reload_failed", err.Error(), nil)
 			return
 		}
+		if h.Changes != nil {
+			entry := baseChange(c, h, req.Rule.ID, rulehistory.ActionCreate, "", string(b), p)
+			entry.RuleType = req.Rule.Type
+			entry.Category = req.Rule.Category
+			entry.Source = req.Rule.Source
+			_ = h.Changes.Append(entry)
+		}
 		c.JSON(200, gin.H{"ok": true, "rule": req.Rule})
 		return
 	}
 	bad(c, "invalid rule")
 }
-func updateRule(c *gin.Context, e *engine.Engine, id string) {
+func updateRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) {
 	p, err := customPath(e.Root(), id)
 	if err != nil {
 		bad(c, "invalid rule id")
@@ -195,6 +203,14 @@ func updateRule(c *gin.Context, e *engine.Engine, id string) {
 		_ = e.Reload()
 		writeError(c, 400, "reload_failed", err.Error(), nil)
 		return
+	}
+	if h.Changes != nil {
+		act := detectAction(b, nb)
+		entry := baseChange(c, h, id, act, string(b), string(nb), p)
+		entry.RuleType = rule.Type
+		entry.Category = rule.Category
+		entry.Source = rule.Source
+		_ = h.Changes.Append(entry)
 	}
 	c.JSON(200, gin.H{"ok": true, "rule": rule})
 }
@@ -234,7 +250,7 @@ func toStrings(v any) []string {
 	}
 	return out
 }
-func deleteRule(c *gin.Context, e *engine.Engine, id string) {
+func deleteRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) {
 	p, err := customPath(e.Root(), id)
 	if err != nil {
 		bad(c, "invalid rule id")
@@ -255,5 +271,32 @@ func deleteRule(c *gin.Context, e *engine.Engine, id string) {
 		writeError(c, 400, "reload_failed", err.Error(), nil)
 		return
 	}
+	if h.Changes != nil {
+		var oldRule rules.Rule
+		_ = yaml.Unmarshal(b, &oldRule)
+		entry := baseChange(c, h, id, rulehistory.ActionDelete, string(b), "", p)
+		entry.RuleType = oldRule.Type
+		entry.Category = oldRule.Category
+		entry.Source = oldRule.Source
+		_ = h.Changes.Append(entry)
+	}
 	c.JSON(200, gin.H{"ok": true})
+}
+
+func detectAction(before, after []byte) rulehistory.Action {
+	var a, b rules.Rule
+	_ = yaml.Unmarshal(before, &a)
+	_ = yaml.Unmarshal(after, &b)
+	ae, be := a.IsEnabled(), b.IsEnabled()
+	a.Enabled = nil
+	b.Enabled = nil
+	ab, _ := yaml.Marshal(a)
+	bb, _ := yaml.Marshal(b)
+	if string(ab) == string(bb) && ae != be {
+		if be {
+			return rulehistory.ActionEnable
+		}
+		return rulehistory.ActionDisable
+	}
+	return rulehistory.ActionUpdate
 }

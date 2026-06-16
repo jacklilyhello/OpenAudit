@@ -12,6 +12,7 @@ import (
 	"github.com/openaudit/openaudit/internal/config"
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/logstore"
+	"github.com/openaudit/openaudit/internal/rulehistory"
 	"github.com/openaudit/openaudit/internal/security"
 )
 
@@ -46,7 +47,13 @@ func main() {
 	api.RegisterOps(r, cfg)
 	api.RegisterAuditWithOptions(r, e, cfg.Limits, logs)
 	api.RegisterBatchWithOptions(r, e, cfg.Limits)
-	api.RegisterRules(r, e)
+	hist := api.HistoryServices{TrustedProxies: cfg.Server.TrustedProxies}
+	if cfg.RuleHistory.Enabled {
+		hist.Changes = rulehistory.New(cfg.RuleHistory.Path, cfg.RuleHistory.MaxEntries)
+		hist.Batches = rulehistory.NewBatchStore(cfg.RuleHistory.ImportBatchesPath)
+	}
+	api.RegisterRules(r, e, hist)
+	api.RegisterHistory(r, e, hist)
 	api.RegisterLogs(r, logs)
 	if cfg.Admin.Enabled {
 		admin.RegisterAt(r, cfg.Admin.Path)

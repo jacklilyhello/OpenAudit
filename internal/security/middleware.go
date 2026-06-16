@@ -34,7 +34,7 @@ func APIKeyMiddleware(cfg config.Config, checker Checker) gin.MiddlewareFunc {
 	}
 }
 func isManagement(p string) bool {
-	return p == "/config" || strings.HasPrefix(p, "/logs") || strings.HasPrefix(p, "/rules/reload") || strings.HasPrefix(p, "/rules/create") || strings.HasPrefix(p, "/rules/update") || strings.HasPrefix(p, "/rules/delete")
+	return p == "/config" || strings.HasPrefix(p, "/logs") || strings.HasPrefix(p, "/rules/reload") || strings.HasPrefix(p, "/rules/create") || strings.HasPrefix(p, "/rules/update") || strings.HasPrefix(p, "/rules/delete") || strings.HasPrefix(p, "/rules/history") || strings.Contains(p, "/history") || strings.Contains(p, "/diff") || strings.HasPrefix(p, "/rules/rollback") || strings.HasPrefix(p, "/imports/batches") || strings.HasPrefix(p, "/rules/changes/stats")
 }
 
 func SecurityHeaders() gin.MiddlewareFunc {

@@ -116,3 +116,7 @@ OpenAudit now has explicit environment modes. `app.env` defaults to `development
 Production API keys should come from environment/secret configuration: `OPENAUDIT_API_KEYS` accepts comma-separated keys and `OPENAUDIT_ADMIN_API_KEY` adds one more administrative key. Development sample keys such as `dev-key` are accepted only for development or test and are rejected as production-only credentials.
 
 The `/admin` dashboard is intended for local/private/tunnel access only. In production, direct public access is denied unless traffic arrives from configured `admin.allowed_cidrs`, Cloudflare Access header mode is enabled and headers are present, or the unsafe production override is explicitly enabled. The recommended public deployment model is a VPS origin behind Cloudflare Tunnel/Access rather than exposing `/admin` or an admin DNS record directly to the VPS origin IP.
+
+## Phase 7 Rule Versioning
+
+OpenAudit includes local file-backed rule change history for API-managed custom rules. Rule create, update, enable/disable, delete, and rollback operations can be recorded under `storage/rule-history/`, and import runs can record batch metadata without committing full external rulesets. Rollback is supported for API-managed custom rules under `data/custom/<rule_id>.yml` only. See [API.md](API.md) for history, diff, rollback, import batch, and change stats endpoints.
