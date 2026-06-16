@@ -127,3 +127,168 @@ Domain rules safely match `example.com`, `www.example.com`, `a.b.example.com`, `
 `go run ./cmd/importer --input examples/sensitive-lexicon-demo --output data/imported --risk medium --action review --source sensitive-lexicon --max-keywords-per-file 10000 --dry-run`
 
 Supported flags: `--input`, `--output`, `--category`, `--risk`, `--action`, `--source`, `--max-keywords-per-file`, and `--dry-run`. Without `--category`, the importer infers categories from relative directory names such as `政治 -> political`, `色情 -> porn`, `赌博 -> gambling`, `诈骗 -> scam`, `毒品 -> drugs`, `广告 -> spam`, and `网址 -> domain`.
+
+## Phase 4: Operational local audit service
+
+Phase 4 turns OpenAudit into an operable local service while keeping the existing audit APIs backward compatible.
+
+### Configuration
+
+OpenAudit uses safe defaults when no config file is provided. A documented starter file is included at `config.example.yml`.
+
+Run with defaults:
+
+```bash
+go run ./cmd/server
+```
+
+Run with a config file:
+
+```bash
+go run ./cmd/server --config ./config.example.yml
+```
+
+`OPENAUDIT_CONFIG` is also supported. The `--config` CLI flag has priority over `OPENAUDIT_CONFIG`.
+
+Important config areas:
+
+- `server`: address and HTTP timeouts. The default address remains `:8080`.
+- `rules`: rule data directory, default `./data`.
+- `security`: API key protection for management endpoints.
+- `audit_log`: JSONL audit logging and in-memory recent log retention.
+- `limits`: request limits for text length, batch size, and maximum hits.
+
+### API key protection
+
+When `security.api_key_enabled` is `true`, protected endpoints require either:
+
+```http
+Authorization: Bearer dev-key
+```
+
+or:
+
+```http
+X-API-Key: dev-key
+```
+
+By default, `/health` is not protected. The admin page can remain accessible without a key when `allow_admin_without_key` is true, while the browser stores the API key in `localStorage` for protected API calls.
+
+### Audit logs
+
+When `audit_log.enabled` is true, audit requests are appended to the configured JSONL file, default `./storage/audit.log`, and the latest `audit_log.max_entries` entries are retained in memory. Runtime log files under `storage/` are ignored by git.
+
+If `log_request_text` is false, OpenAudit stores only `text_sha256` and `text_length`. If `log_hits` is false, OpenAudit stores `hit_count` without full hit details.
+
+Recent logs:
+
+```bash
+curl 'http://localhost:8080/logs/recent?limit=50'
+curl 'http://localhost:8080/logs/recent?action=block'
+curl 'http://localhost:8080/logs/recent?matched=true'
+curl 'http://localhost:8080/logs/recent?category=political'
+```
+
+Log stats:
+
+```bash
+curl http://localhost:8080/logs/stats
+```
+
+### Rule browser APIs
+
+List rules with deterministic ordering and filters:
+
+```bash
+curl 'http://localhost:8080/rules?type=keyword&category=custom&limit=50&offset=0'
+```
+
+Get a rule:
+
+```bash
+curl http://localhost:8080/rules/custom_keyword_001
+```
+
+Inspect categories and sources:
+
+```bash
+curl http://localhost:8080/rules/categories
+curl http://localhost:8080/rules/sources
+```
+
+These APIs return the YAML-level rule model and do not expose compiled matcher internals.
+
+### Custom rule management APIs
+
+Phase 4 uses a safer single-rule-per-file strategy for API-managed custom rules. Created rules are written to:
+
+```text
+data/custom/<rule_id>.yml
+```
+
+Create a custom rule:
+
+```bash
+curl -X POST http://localhost:8080/rules/create \
+  -H 'Content-Type: application/json' \
+  -d '{"rule":{"id":"custom_keyword_001","type":"keyword","category":"custom","risk_level":"medium","action":"review","score":60,"enabled":true,"keywords":["测试词"]}}'
+```
+
+Update a custom rule:
+
+```bash
+curl -X PATCH http://localhost:8080/rules/update/custom_keyword_001 \
+  -H 'Content-Type: application/json' \
+  -d '{"patch":{"enabled":false,"score":30,"keywords":["测试词","新增词"]}}'
+```
+
+Delete a custom rule:
+
+```bash
+curl -X DELETE http://localhost:8080/rules/delete/custom_keyword_001
+```
+
+Bundled/imported rules outside `data/custom/` are read-only in Phase 4. Updating or deleting them returns: `only custom API-managed rules can be updated or deleted in Phase 4`.
+
+### Admin dashboard
+
+The vanilla HTML/CSS/JS dashboard at `/admin` now includes:
+
+- service config summary
+- rule browser and rule detail viewer
+- custom rule creation
+- custom rule enable/disable and delete actions
+- recent audit logs and log stats
+- API key field saved in browser `localStorage`
+- improved management-operation error display
+- the existing text test panel
+
+### Request limits
+
+Configured limits are enforced for audit requests:
+
+- `/audit/text` rejects text longer than `limits.max_text_runes` with HTTP 413.
+- `/audit/batch` rejects batches larger than `limits.max_batch_items` with HTTP 413.
+- request `options.max_hits` is capped to `limits.max_hits`.
+
+### Operational endpoints
+
+Version metadata:
+
+```bash
+curl http://localhost:8080/version
+```
+
+Sanitized runtime config, without API keys:
+
+```bash
+curl http://localhost:8080/config
+```
+
+### Security notes
+
+OpenAudit remains a local-first service. For shared or exposed deployments, enable API keys, keep rule directories writable only by trusted users, disable raw text logging if request content is sensitive, and place the service behind TLS or a trusted reverse proxy.
+
+### Phase 5 roadmap
+
+Planned Phase 5 work includes deeper AI moderation integration, OCR/image audit pipelines, database-backed audit history, richer RBAC, and multi-node operational features.

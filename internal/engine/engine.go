@@ -50,6 +50,14 @@ func (e *Engine) Reload() error {
 	return nil
 }
 func (e *Engine) Stats() rules.Stats { e.mu.RLock(); defer e.mu.RUnlock(); return e.set.Stats() }
+func (e *Engine) Rules() []rules.Rule {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	out := make([]rules.Rule, len(e.set.Rules))
+	copy(out, e.set.Rules)
+	return out
+}
+func (e *Engine) Root() string { return e.root }
 func (e *Engine) Audit(text string, normalize bool) Result {
 	b := normalize
 	return e.AuditWithOptions(text, model.AuditOptions{Normalize: &b})

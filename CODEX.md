@@ -500,3 +500,35 @@ Files:
 
 Notes:
 - Append-only log entry for Phase 3.
+
+## Commit pending
+
+Date: 2026-06-16
+
+Summary:
+- Implement Phase 4 operational management layer
+- Add configuration system
+- Add local audit logging and log APIs
+- Add rule inspection APIs
+- Add API-managed custom rule create/update/delete
+- Add API key middleware and request limits
+- Improve admin dashboard for rule and log management
+- Add version/config endpoints
+- Add tests and documentation
+
+Files:
+- internal/config/...
+- internal/logstore/...
+- internal/security/...
+- internal/api/...
+- internal/admin/...
+- internal/rules/...
+- web/admin/...
+- config.example.yml
+- storage/.gitkeep
+- README.md
+- CODEX.md
+
+Notes:
+- Append-only log entry for Phase 4.
+- Existing Phase 1/2/3 APIs remain backward compatible.
