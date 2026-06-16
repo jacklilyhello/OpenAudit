@@ -26,6 +26,24 @@ type Options struct {
 	MaxKeywordsPerFile, MaxLineRunes                                                                              int
 	DryRun, Strict, ReloadAfterImport                                                                             bool
 }
+
+type ValidatedOptions struct {
+	Options
+	inputRoot  validatedRoot
+	outputRoot validatedRoot
+}
+
+type validatedRoot struct {
+	abs string
+}
+
+type validatedPath struct {
+	abs string
+}
+
+func (p validatedPath) String() string { return p.abs }
+func (r validatedRoot) String() string { return r.abs }
+
 type Result struct {
 	Files                                                                    []string
 	Keywords, FilesScanned, KeywordsRead, KeywordsDeduplicated, FilesWritten int
@@ -273,125 +291,180 @@ func safeJoinUnder(baseAbs string, elems ...string) (string, error) {
 	return joinedAbs, nil
 }
 
-func validateInputRoot(input string) (string, error) {
-	validatedInputRootAbs, err := absCleanPath(input)
-	if err != nil {
-		return "", err
+func NewValidatedOptions(inputPath, outputPath string, opts Options) (ValidatedOptions, error) {
+	defaults(&opts)
+	if strings.TrimSpace(inputPath) != "" {
+		opts.Input = inputPath
 	}
-	info, err := lstatValidatedPathAbs(validatedInputRootAbs)
-	if err != nil {
-		return "", fmt.Errorf("stat input root: %w", err)
+	if strings.TrimSpace(outputPath) != "" {
+		opts.Output = outputPath
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("input root symlink rejected")
-	}
-	if !info.IsDir() {
-		return "", errors.New("input root is not a directory")
-	}
-	return validatedInputRootAbs, nil
+	return newValidatedOptions(opts)
 }
 
-func validateOutputRoot(output string, create bool) (string, error) {
-	validatedOutputRootAbs, err := absCleanPath(output)
+func NewValidatedOptionsWithDefaults(rawInputPath, rawOutputPath, defaultInputRoot, defaultOutputRoot string, opts Options) (ValidatedOptions, error) {
+	inputPath, err := resolvePathUnderDefaultRoot(rawInputPath, defaultInputRoot, "input_path")
 	if err != nil {
-		return "", err
+		return ValidatedOptions{}, err
 	}
-	info, err := lstatValidatedPathAbs(validatedOutputRootAbs)
+	outputPath, err := resolvePathUnderDefaultRoot(rawOutputPath, defaultOutputRoot, "output_path")
+	if err != nil {
+		return ValidatedOptions{}, err
+	}
+	return NewValidatedOptions(inputPath, outputPath, opts)
+}
+
+func newValidatedOptions(opts Options) (ValidatedOptions, error) {
+	defaults(&opts)
+	inputRoot, err := newValidatedRoot(opts.Input, true, false)
+	if err != nil {
+		return ValidatedOptions{}, err
+	}
+	outputRoot, err := newValidatedRoot(opts.Output, false, !opts.DryRun)
+	if err != nil {
+		return ValidatedOptions{}, err
+	}
+	displayInput, _ := cleanUserPath(opts.Input)
+	displayOutput, _ := cleanUserPath(opts.Output)
+	opts.Input = displayInput
+	opts.Output = displayOutput
+	return ValidatedOptions{Options: opts, inputRoot: inputRoot, outputRoot: outputRoot}, nil
+}
+
+func resolvePathUnderDefaultRoot(rawPath, defaultRoot, field string) (string, error) {
+	defaultRootAbs, err := absCleanPath(defaultRoot)
+	if err != nil {
+		return "", fmt.Errorf("%s default root: %w", field, err)
+	}
+	provided := strings.TrimSpace(rawPath)
+	if provided == "" {
+		return defaultRootAbs, nil
+	}
+	if strings.ContainsRune(provided, 0) {
+		return "", fmt.Errorf("%s contains NUL", field)
+	}
+	if containsParentTraversal(provided) {
+		return "", fmt.Errorf("%s contains parent traversal", field)
+	}
+	var candidateAbs string
+	if filepath.IsAbs(provided) {
+		candidateAbs, err = absCleanPath(provided)
+	} else {
+		candidateAbs, err = safeJoinUnder(defaultRootAbs, provided)
+	}
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", field, err)
+	}
+	if err := ensurePathUnder(defaultRootAbs, candidateAbs); err != nil {
+		return "", fmt.Errorf("%s outside configured root: %w", field, err)
+	}
+	return candidateAbs, nil
+}
+
+func newValidatedRoot(raw string, requireExistingDir bool, create bool) (validatedRoot, error) {
+	rootAbs, err := absCleanPath(raw)
+	if err != nil {
+		return validatedRoot{}, err
+	}
+	root := validatedRoot{abs: rootAbs}
+	rootPath := root.path()
+	info, err := root.lstat(rootPath)
 	if err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			return "", errors.New("output root symlink rejected")
+			return validatedRoot{}, errors.New("root symlink rejected")
 		}
 		if !info.IsDir() {
-			return "", errors.New("output root is not a directory")
+			return validatedRoot{}, errors.New("root is not a directory")
 		}
-		return validatedOutputRootAbs, nil
+		return root, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("stat output root: %w", err)
+		return validatedRoot{}, fmt.Errorf("stat root: %w", err)
+	}
+	if requireExistingDir {
+		return validatedRoot{}, fmt.Errorf("stat root: %w", err)
 	}
 	if create {
-		if err := mkdirAll0750Under(validatedOutputRootAbs, validatedOutputRootAbs); err != nil {
-			return "", fmt.Errorf("create output root: %w", err)
+		if err := root.MkdirAll0750(rootPath); err != nil {
+			return validatedRoot{}, fmt.Errorf("create root: %w", err)
 		}
 	}
-	return validatedOutputRootAbs, nil
+	return root, nil
 }
 
-func lstatValidatedPathAbs(validatedPathAbs string) (os.FileInfo, error) {
-	if validatedPathAbs == "" {
-		return nil, errors.New("validated path is empty")
-	}
-	if strings.ContainsRune(validatedPathAbs, 0) {
-		return nil, errors.New("validated path contains NUL")
-	}
-	if !filepath.IsAbs(validatedPathAbs) {
-		return nil, errors.New("validated path must be absolute")
-	}
-	validatedPathAbs = filepath.Clean(validatedPathAbs)
-	if containsParentTraversal(validatedPathAbs) {
-		return nil, errors.New("validated path contains parent traversal")
-	}
-	// codeql[go/path-injection] -- validatedPathAbs is an absolute path returned by absCleanPath or safeJoinUnder; callers filepath.Rel-constrain request-derived candidates under a validated root, reject NUL/parent traversal/absolute escape, and reject symlinks before use.
-	return os.Lstat(validatedPathAbs)
+func (r validatedRoot) path() validatedPath {
+	return validatedPath{abs: r.abs}
 }
 
-func validateReportPath(reportPath string, allowedReportRoot string) (string, error) {
-	if strings.TrimSpace(reportPath) == "" {
-		return "", nil
+func (r validatedRoot) ensureContains(p validatedPath) error {
+	if r.abs == "" || strings.ContainsRune(r.abs, 0) || !filepath.IsAbs(r.abs) {
+		return errors.New("validated root is invalid")
 	}
-	validatedReportPathAbs, err := absCleanPath(reportPath)
+	if p.abs == "" || strings.ContainsRune(p.abs, 0) || !filepath.IsAbs(p.abs) {
+		return errors.New("validated path is invalid")
+	}
+	return ensurePathUnder(r.abs, p.abs)
+}
+
+func (r validatedRoot) ValidateAbs(candidate string) (validatedPath, error) {
+	if candidate == "" {
+		return validatedPath{}, errors.New("path is empty")
+	}
+	if strings.ContainsRune(candidate, 0) {
+		return validatedPath{}, errors.New("path contains NUL")
+	}
+	if !filepath.IsAbs(candidate) {
+		return validatedPath{}, errors.New("path must be absolute")
+	}
+	candidateAbs := filepath.Clean(candidate)
+	if containsParentTraversal(candidateAbs) {
+		return validatedPath{}, errors.New("path contains parent traversal")
+	}
+	p := validatedPath{abs: candidateAbs}
+	if err := r.ensureContains(p); err != nil {
+		return validatedPath{}, err
+	}
+	return p, nil
+}
+
+func (r validatedRoot) JoinClean(elems ...string) (validatedPath, error) {
+	joinedAbs, err := safeJoinUnder(r.abs, elems...)
 	if err != nil {
-		return "", err
+		return validatedPath{}, err
 	}
-	validatedReportRootAbs := ""
-	if allowedReportRoot != "" {
-		validatedReportRootAbs, err = absCleanPath(allowedReportRoot)
-		if err != nil {
-			return "", fmt.Errorf("report root: %w", err)
-		}
-		if info, err := lstatValidatedPathAbs(validatedReportRootAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
-			return "", errors.New("report root symlink rejected")
-		}
-		if err := mkdirAll0750Under(validatedReportRootAbs, validatedReportRootAbs); err != nil {
-			return "", fmt.Errorf("create report root: %w", err)
-		}
-		if info, err := lstatValidatedPathAbs(validatedReportRootAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
-			return "", errors.New("report root symlink rejected")
-		}
-		if err := ensurePathUnder(validatedReportRootAbs, validatedReportPathAbs); err != nil {
-			return "", err
-		}
-	}
-	validatedParentDirAbs := filepath.Clean(filepath.Dir(validatedReportPathAbs))
-	if validatedReportRootAbs != "" {
-		if err := ensurePathUnder(validatedReportRootAbs, validatedParentDirAbs); err != nil {
-			return "", err
-		}
-	}
-	if info, err := lstatValidatedPathAbs(validatedParentDirAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("report parent symlink rejected")
-	}
-	if validatedReportRootAbs != "" {
-		if err := mkdirAll0750Under(validatedReportRootAbs, validatedParentDirAbs); err != nil {
-			return "", fmt.Errorf("create report directory: %w", err)
-		}
-	} else {
-		if err := mkdirAll0750Under(validatedParentDirAbs, validatedParentDirAbs); err != nil {
-			return "", fmt.Errorf("create report directory: %w", err)
-		}
-	}
-	return validatedReportPathAbs, nil
+	return r.ValidateAbs(joinedAbs)
 }
 
-func mkdirAll0750Under(rootAbs, dirAbs string) error {
-	if !filepath.IsAbs(dirAbs) {
-		return errors.New("directory path must be absolute")
+func (r validatedRoot) joinUnderPath(base validatedPath, elems ...string) (validatedPath, error) {
+	if err := r.ensureContains(base); err != nil {
+		return validatedPath{}, err
 	}
-	validatedDirAbs := filepath.Clean(dirAbs)
-	if err := ensurePathUnder(rootAbs, validatedDirAbs); err != nil {
+	joinedAbs, err := safeJoinUnder(base.abs, elems...)
+	if err != nil {
+		return validatedPath{}, err
+	}
+	return r.ValidateAbs(joinedAbs)
+}
+
+func (r validatedRoot) Parent(p validatedPath) (validatedPath, error) {
+	if err := r.ensureContains(p); err != nil {
+		return validatedPath{}, err
+	}
+	return r.ValidateAbs(filepath.Clean(filepath.Dir(p.abs)))
+}
+
+func (r validatedRoot) lstat(p validatedPath) (fs.FileInfo, error) {
+	if err := r.ensureContains(p); err != nil {
+		return nil, err
+	}
+	return os.Lstat(p.abs)
+}
+
+func (r validatedRoot) MkdirAll0750(p validatedPath) error {
+	if err := r.ensureContains(p); err != nil {
 		return err
 	}
-	if info, err := lstatValidatedPathAbs(validatedDirAbs); err == nil {
+	if info, err := r.lstat(p); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return errors.New("directory symlink rejected")
 		}
@@ -400,23 +473,14 @@ func mkdirAll0750Under(rootAbs, dirAbs string) error {
 		}
 		return nil
 	}
-	// codeql[go/path-injection] -- validatedDirAbs is an absolute path accepted by mkdirAll0750Under after filepath.Rel containment under rootAbs; the path rejects NUL/parent traversal/absolute escape, and any existing symlink was rejected immediately above.
-	err := os.MkdirAll(validatedDirAbs, 0750)
-	if err != nil {
+	if err := os.MkdirAll(p.abs, 0750); err != nil {
 		return fmt.Errorf("create directory: %w", err)
 	}
 	return nil
 }
 
-func openValidatedInputFile(inputRootAbs, fileAbs string) (*os.File, error) {
-	if !filepath.IsAbs(fileAbs) {
-		return nil, errors.New("input file path must be absolute")
-	}
-	validatedFileAbs := filepath.Clean(fileAbs)
-	if err := ensurePathUnder(inputRootAbs, validatedFileAbs); err != nil {
-		return nil, err
-	}
-	info, err := lstatValidatedPathAbs(validatedFileAbs)
+func (r validatedRoot) OpenInputFile(p validatedPath) (*os.File, error) {
+	info, err := r.lstat(p)
 	if err != nil {
 		return nil, err
 	}
@@ -426,53 +490,32 @@ func openValidatedInputFile(inputRootAbs, fileAbs string) (*os.File, error) {
 	if info.IsDir() {
 		return nil, errors.New("input file is a directory")
 	}
-	// codeql[go/path-injection] -- validatedFileAbs is absolute, filepath.Rel-constrained under validated inputRootAbs, and Lstat rejects symlinks/directories immediately before opening.
-	return os.Open(validatedFileAbs) // #nosec G304,G305 -- validatedFileAbs is absolute, filepath.Rel-constrained under validated inputRootAbs, and Lstat rejects symlinks/directories immediately before opening; OpenAudit supports Go versions without os.OpenRoot.
+	return os.Open(p.abs) // #nosec G304,G305 -- p is a validatedPath with unexported fields, constrained under validatedRoot, and symlink/directories are rejected before opening.
 }
 
-func writeValidatedFile0600Under(rootAbs, dstAbs string, data []byte) error {
-	if !filepath.IsAbs(dstAbs) {
-		return errors.New("destination path must be absolute")
-	}
-	validatedDstAbs := filepath.Clean(dstAbs)
-	if err := ensurePathUnder(rootAbs, validatedDstAbs); err != nil {
+func (r validatedRoot) WriteFile0600Atomic(p validatedPath, data []byte) error {
+	if err := r.ensureContains(p); err != nil {
 		return err
 	}
-	validatedParentDirAbs, err := validatedParentDirUnder(rootAbs, validatedDstAbs)
+	parent, err := r.Parent(p)
 	if err != nil {
 		return err
 	}
-	if err := mkdirAll0750Under(rootAbs, validatedParentDirAbs); err != nil {
+	if err := r.MkdirAll0750(parent); err != nil {
 		return err
 	}
-	return writeFile0600AtomicValidated(rootAbs, validatedDstAbs, data)
-}
-
-func writeFile0600AtomicValidated(rootAbs, dstAbs string, data []byte) error {
-	validatedDstAbs := filepath.Clean(dstAbs)
-	if err := ensurePathUnder(rootAbs, validatedDstAbs); err != nil {
-		return err
-	}
-	validatedParentDirAbs, err := validatedParentDirUnder(rootAbs, validatedDstAbs)
+	tmpPath, err := r.tempFilePath(parent)
 	if err != nil {
 		return err
 	}
-	tmpName := fmt.Sprintf(".openaudit-import-%d.tmp", time.Now().UnixNano())
-	validatedTmpAbs, err := safeJoinUnder(validatedParentDirAbs, tmpName)
-	if err != nil {
-		return err
-	}
-	if err := ensurePathUnder(rootAbs, validatedTmpAbs); err != nil {
-		return err
-	}
-	tmp, err := openValidatedTempFile0600(rootAbs, validatedTmpAbs)
+	tmp, err := r.openTempFile0600(tmpPath)
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
 	cleanup := true
 	defer func() {
 		if cleanup {
-			removeValidatedTempFile(rootAbs, validatedTmpAbs)
+			_ = r.Remove(tmpPath)
 		}
 	}()
 	if _, err := tmp.Write(data); err != nil {
@@ -492,65 +535,45 @@ func writeFile0600AtomicValidated(rootAbs, dstAbs string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
 	}
-	if err := renameValidatedFile(rootAbs, validatedTmpAbs, validatedDstAbs); err != nil {
+	if err := r.RenameWithinRoot(tmpPath, p); err != nil {
 		return fmt.Errorf("rename temp file: %w", err)
 	}
 	cleanup = false
 	return nil
 }
 
-func validatedParentDirUnder(rootAbs, fileAbs string) (string, error) {
-	if !filepath.IsAbs(fileAbs) {
-		return "", errors.New("file path must be absolute")
-	}
-	validatedFileAbs := filepath.Clean(fileAbs)
-	if err := ensurePathUnder(rootAbs, validatedFileAbs); err != nil {
-		return "", err
-	}
-	validatedParentDirAbs := filepath.Clean(filepath.Dir(validatedFileAbs))
-	if err := ensurePathUnder(rootAbs, validatedParentDirAbs); err != nil {
-		return "", err
-	}
-	return validatedParentDirAbs, nil
+func (r validatedRoot) tempFilePath(parent validatedPath) (validatedPath, error) {
+	tmpName := fmt.Sprintf(".openaudit-import-%d.tmp", time.Now().UnixNano())
+	return r.joinUnderPath(parent, tmpName)
 }
 
-func openValidatedTempFile0600(rootAbs, tmpAbs string) (*os.File, error) {
-	validatedTmpAbs := filepath.Clean(tmpAbs)
-	if err := ensurePathUnder(rootAbs, validatedTmpAbs); err != nil {
+func (r validatedRoot) openTempFile0600(p validatedPath) (*os.File, error) {
+	if err := r.ensureContains(p); err != nil {
 		return nil, err
 	}
-	// codeql[go/path-injection] -- validatedTmpAbs is a generated temp filename returned by safeJoinUnder beneath a validated parent directory; it is absolute, filepath.Rel-constrained under rootAbs, rejects NUL/parent traversal/absolute escape, and is created with 0600 permissions.
-	return os.OpenFile(validatedTmpAbs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 -- validatedTmpAbs is generated under a validated destination directory constrained to rootAbs.
+	return os.OpenFile(p.abs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 -- p is a generated validatedPath under validatedRoot and is created with 0600 permissions.
 }
 
-func removeValidatedTempFile(rootAbs, tmpAbs string) {
-	validatedTmpAbs := filepath.Clean(tmpAbs)
-	if err := ensurePathUnder(rootAbs, validatedTmpAbs); err != nil {
-		return
-	}
-	// codeql[go/path-injection] -- validatedTmpAbs is a generated temp filename returned by safeJoinUnder beneath a validated parent directory and filepath.Rel-constrained under rootAbs before removal.
-	_ = os.Remove(validatedTmpAbs)
-}
-
-func renameValidatedFile(rootAbs, oldAbs, newAbs string) error {
-	validatedOldAbs := filepath.Clean(oldAbs)
-	validatedNewAbs := filepath.Clean(newAbs)
-	if err := ensurePathUnder(rootAbs, validatedOldAbs); err != nil {
+func (r validatedRoot) Remove(p validatedPath) error {
+	if err := r.ensureContains(p); err != nil {
 		return err
 	}
-	if err := ensurePathUnder(rootAbs, validatedNewAbs); err != nil {
-		return err
-	}
-	// codeql[go/path-injection] -- validatedOldAbs and validatedNewAbs are absolute paths filepath.Rel-constrained under rootAbs; the old path is a generated temp filename and the new path was returned by safeJoinUnder/validateReportPath.
-	return os.Rename(validatedOldAbs, validatedNewAbs)
+	return os.Remove(p.abs)
 }
 
-func walkValidatedInputRoot(validatedInputRootAbs string, walkFn fs.WalkDirFunc) error {
-	if validatedInputRootAbs == "" || strings.ContainsRune(validatedInputRootAbs, 0) || !filepath.IsAbs(validatedInputRootAbs) {
-		return errors.New("input root is not a validated absolute path")
+func (r validatedRoot) RenameWithinRoot(oldPath validatedPath, newPath validatedPath) error {
+	if err := r.ensureContains(oldPath); err != nil {
+		return err
 	}
-	validatedInputRootAbs = filepath.Clean(validatedInputRootAbs)
-	info, err := lstatValidatedPathAbs(validatedInputRootAbs)
+	if err := r.ensureContains(newPath); err != nil {
+		return err
+	}
+	return os.Rename(oldPath.abs, newPath.abs)
+}
+
+func (r validatedRoot) Walk(fn func(validatedPath, fs.DirEntry) error) error {
+	rootPath := r.path()
+	info, err := r.lstat(rootPath)
 	if err != nil {
 		return err
 	}
@@ -560,8 +583,36 @@ func walkValidatedInputRoot(validatedInputRootAbs string, walkFn fs.WalkDirFunc)
 	if !info.IsDir() {
 		return errors.New("input root is not a directory")
 	}
-	// codeql[go/path-injection] -- validatedInputRootAbs is returned by validateInputRoot as an absolute, clean path that rejects NUL/parent traversal; it is confirmed to be a non-symlink directory immediately before walking.
-	return filepath.WalkDir(validatedInputRootAbs, walkFn)
+	return r.walkDir(rootPath, fn)
+}
+
+func (r validatedRoot) walkDir(dir validatedPath, fn func(validatedPath, fs.DirEntry) error) error {
+	if err := r.ensureContains(dir); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir.abs)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		child, err := r.joinUnderPath(dir, entry.Name())
+		if err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlink input path rejected: %s", child.abs)
+		}
+		if entry.IsDir() {
+			if err := r.walkDir(child, fn); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := fn(child, entry); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ReportFileName(batchID string) string {
@@ -571,11 +622,6 @@ func ReportFileName(batchID string) string {
 		id = "import_report"
 	}
 	return "import_" + id + ".json"
-}
-
-func writeFile0600Atomic(path string, data []byte) error {
-	root := filepath.Dir(path)
-	return writeFile0600AtomicValidated(root, path, data)
 }
 
 func ImportSensitiveLexicon(o Options) (Result, error) {
@@ -592,53 +638,44 @@ func ImportSensitiveLexicon(o Options) (Result, error) {
 	return r, err
 }
 func Run(o Options) (*Report, error) {
-	defaults(&o)
+	validated, err := NewValidatedOptions(o.Input, o.Output, o)
+	if err != nil {
+		return nil, err
+	}
+	return RunValidated(validated)
+}
+
+func RunValidated(o ValidatedOptions) (*Report, error) {
+	if o.inputRoot.abs == "" || o.outputRoot.abs == "" {
+		return nil, errors.New("validated importer options are required")
+	}
 	start := time.Now()
-	validatedInputRootAbs, err := validateInputRoot(o.Input)
-	if err != nil {
-		return nil, err
-	}
-	validatedOutputRootAbs, err := validateOutputRoot(o.Output, !o.DryRun)
-	if err != nil {
-		return nil, err
-	}
-	displayInput, _ := cleanUserPath(o.Input)
-	displayOutput, _ := cleanUserPath(o.Output)
-	rep := &Report{BatchID: NewBatchID(), Timestamp: time.Now().UTC(), Source: o.Source, InputPath: displayInput, OutputPath: displayOutput, DryRun: o.DryRun, ReloadAfterImport: o.ReloadAfterImport, Status: "ok", Categories: map[string]int{}, RuleTypes: map[string]int{}}
+	inputRoot := o.inputRoot
+	outputRoot := o.outputRoot
+	rep := &Report{BatchID: NewBatchID(), Timestamp: time.Now().UTC(), Source: o.Source, InputPath: o.Input, OutputPath: o.Output, DryRun: o.DryRun, ReloadAfterImport: o.ReloadAfterImport, Status: "ok", Categories: map[string]int{}, RuleTypes: map[string]int{}}
 	if o.DryRun {
 		rep.Status = "dry_run"
 	}
 	groups := map[string][]string{}
 	seenBatch := map[string]bool{}
-	err = walkValidatedInputRoot(validatedInputRootAbs, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
+	err := inputRoot.Walk(func(path validatedPath, d fs.DirEntry) error {
 		if d.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlink input path rejected: %s", path)
+			return fmt.Errorf("symlink input path rejected: %s", path.String())
 		}
 		if d.IsDir() {
 			return nil
 		}
-		ext := strings.ToLower(filepath.Ext(path))
+		ext := strings.ToLower(filepath.Ext(path.String()))
 		if ext != ".txt" && ext != ".list" && ext != ".csv" {
 			return nil
 		}
-		validatedFileAbs, err := filepath.Abs(path)
-		if err != nil {
-			return fmt.Errorf("absolute input file path: %w", err)
-		}
-		validatedFileAbs = filepath.Clean(validatedFileAbs)
-		if err := ensurePathUnder(validatedInputRootAbs, validatedFileAbs); err != nil {
-			return err
-		}
 		rep.FilesScanned++
-		rel, err := filepath.Rel(validatedInputRootAbs, validatedFileAbs)
+		rel, err := filepath.Rel(inputRoot.String(), path.String())
 		if err != nil {
 			return fmt.Errorf("relative input file path: %w", err)
 		}
 		cat := inferCategory(o.Category, rel)
-		f, err := openValidatedInputFile(validatedInputRootAbs, validatedFileAbs)
+		f, err := inputRoot.OpenInputFile(path)
 		if err != nil {
 			return err
 		}
@@ -749,14 +786,11 @@ func Run(o Options) (*Report, error) {
 			}
 			sourceComponent := SanitizeCategory(o.Source)
 			id := strings.ToLower(safeID.ReplaceAllString(fmt.Sprintf("%s_%s_%s_%03d", sourceComponent, category, ruleType, i), "_"))
-			validatedDstAbs, err := safeJoinUnder(validatedOutputRootAbs, sourceComponent, category, ruleType, id+".yml")
+			dst, err := outputRoot.JoinClean(sourceComponent, category, ruleType, id+".yml")
 			if err != nil {
 				return rep, err
 			}
-			if err := ensurePathUnder(validatedOutputRootAbs, validatedDstAbs); err != nil {
-				return rep, err
-			}
-			rep.OutputFiles = append(rep.OutputFiles, validatedDstAbs)
+			rep.OutputFiles = append(rep.OutputFiles, dst.String())
 			if !o.DryRun {
 				en := true
 				rr := rules.Rule{ID: id, Type: ruleType, Category: category, RiskLevel: o.Risk, Action: o.Action, Score: 0, Description: "Imported from Sensitive-lexicon-compatible ruleset.", Source: o.Source, Tags: []string{"imported", o.Source, category, ruleType}, Enabled: &en}
@@ -772,7 +806,7 @@ func Run(o Options) (*Report, error) {
 				if err != nil {
 					return rep, err
 				}
-				if err := writeValidatedFile0600Under(validatedOutputRootAbs, validatedDstAbs, b); err != nil {
+				if err := outputRoot.WriteFile0600Atomic(dst, b); err != nil {
 					return rep, err
 				}
 			}
@@ -824,25 +858,47 @@ func WriteReportUnder(rep *Report, reportRoot, path, format string) error {
 	if path == "" {
 		return nil
 	}
-	validatedPath, err := validateReportPath(path, reportRoot)
-	if err != nil {
-		return err
-	}
 	var b []byte
 	if format == "markdown" {
 		b = []byte(fmt.Sprintf("# Import %s\n\nStatus: %s\nFiles scanned: %d\nLines read: %d\nDuplicates removed: %d\n", rep.BatchID, rep.Status, rep.FilesScanned, rep.LinesRead, rep.DuplicatesRemoved))
 	} else {
+		var err error
 		b, err = json.MarshalIndent(rep, "", "  ")
 		if err != nil {
 			return err
 		}
 	}
-	root := filepath.Dir(validatedPath)
-	if reportRoot != "" {
-		root, err = absCleanPath(reportRoot)
-		if err != nil {
-			return err
-		}
+	root, target, err := validatedReportTarget(reportRoot, path)
+	if err != nil {
+		return err
 	}
-	return writeValidatedFile0600Under(root, validatedPath, b)
+	return root.WriteFile0600Atomic(target, b)
+}
+
+func validatedReportTarget(reportRoot, path string) (validatedRoot, validatedPath, error) {
+	targetAbs, err := absCleanPath(path)
+	if err != nil {
+		return validatedRoot{}, validatedPath{}, err
+	}
+	if strings.TrimSpace(reportRoot) != "" {
+		root, err := newValidatedRoot(reportRoot, false, true)
+		if err != nil {
+			return validatedRoot{}, validatedPath{}, fmt.Errorf("report root: %w", err)
+		}
+		target, err := root.ValidateAbs(targetAbs)
+		if err != nil {
+			return validatedRoot{}, validatedPath{}, err
+		}
+		return root, target, nil
+	}
+	parentAbs := filepath.Clean(filepath.Dir(targetAbs))
+	root, err := newValidatedRoot(parentAbs, false, true)
+	if err != nil {
+		return validatedRoot{}, validatedPath{}, err
+	}
+	target, err := root.ValidateAbs(targetAbs)
+	if err != nil {
+		return validatedRoot{}, validatedPath{}, err
+	}
+	return root, target, nil
 }

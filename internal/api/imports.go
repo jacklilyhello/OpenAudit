@@ -1,8 +1,6 @@
 package api
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -27,17 +25,9 @@ type importRequest struct {
 }
 
 func RegisterImports(r gin.IRouter, cfg config.Config, batches *rulehistory.BatchStore) {
-	toOpt := func(req importRequest, dry bool) (importer.Options, error) {
+	toOpt := func(req importRequest, dry bool) (importer.ValidatedOptions, error) {
 		rawInputPath := strings.TrimSpace(req.InputPath)
 		rawOutputPath := strings.TrimSpace(req.OutputPath)
-		validatedInputPath, err := resolveImportAPIPath(rawInputPath, cfg.Importer.DefaultInputDir, "input_path")
-		if err != nil {
-			return importer.Options{}, err
-		}
-		validatedOutputPath, err := resolveImportAPIPath(rawOutputPath, cfg.Importer.DefaultOutputDir, "output_path")
-		if err != nil {
-			return importer.Options{}, err
-		}
 		src := req.Source
 		if src == "" {
 			src = cfg.Importer.DefaultSource
@@ -46,7 +36,8 @@ func RegisterImports(r gin.IRouter, cfg config.Config, batches *rulehistory.Batc
 		if max <= 0 {
 			max = cfg.Importer.MaxKeywordsPerFile
 		}
-		return importer.Options{Input: validatedInputPath, Output: validatedOutputPath, Source: src, Type: req.Type, Category: req.Category, Risk: req.RiskLevel, Action: req.Action, Strict: req.Strict, MaxKeywordsPerFile: max, DryRun: dry, ReloadAfterImport: req.ReloadAfterImport}, nil
+		opts := importer.Options{Source: src, Type: req.Type, Category: req.Category, Risk: req.RiskLevel, Action: req.Action, Strict: req.Strict, MaxKeywordsPerFile: max, DryRun: dry, ReloadAfterImport: req.ReloadAfterImport}
+		return importer.NewValidatedOptionsWithDefaults(rawInputPath, rawOutputPath, cfg.Importer.DefaultInputDir, cfg.Importer.DefaultOutputDir, opts)
 	}
 	r.POST("/imports/preview", func(c *gin.Context) {
 		var req importRequest
@@ -59,7 +50,7 @@ func RegisterImports(r gin.IRouter, cfg config.Config, batches *rulehistory.Batc
 			c.JSON(400, gin.H{"ok": false, "error": err.Error()})
 			return
 		}
-		rep, err := importer.Run(o)
+		rep, err := importer.RunValidated(o)
 		if err != nil {
 			c.JSON(400, gin.H{"ok": false, "error": err.Error(), "preview": rep})
 			return
@@ -77,7 +68,7 @@ func RegisterImports(r gin.IRouter, cfg config.Config, batches *rulehistory.Batc
 			c.JSON(400, gin.H{"ok": false, "error": err.Error()})
 			return
 		}
-		rep, err := importer.Run(o)
+		rep, err := importer.RunValidated(o)
 		if rep != nil {
 			reportPath := filepath.Join(cfg.Importer.ReportDir, importer.ReportFileName(rep.BatchID))
 			if reportErr := importer.WriteReportUnder(rep, cfg.Importer.ReportDir, reportPath, "json"); reportErr != nil && err == nil {
@@ -93,110 +84,4 @@ func RegisterImports(r gin.IRouter, cfg config.Config, batches *rulehistory.Batc
 		}
 		c.JSON(200, gin.H{"ok": true, "batch_id": rep.BatchID, "report": rep, "reload": rep.Reload})
 	})
-}
-
-func resolveImportAPIPath(requestPath, defaultRoot, field string) (string, error) {
-	rootAbs, err := safeAPIAbsPath(defaultRoot)
-	if err != nil {
-		return "", fmt.Errorf("%s default root: %w", field, err)
-	}
-	if err := rejectAPISymlinkPath(rootAbs, field+" default root"); err != nil {
-		return "", err
-	}
-	provided := strings.TrimSpace(requestPath)
-	if provided == "" {
-		return rootAbs, nil
-	}
-	if strings.ContainsRune(provided, 0) {
-		return "", fmt.Errorf("%s contains NUL", field)
-	}
-	if hasParentTraversal(provided) {
-		return "", fmt.Errorf("%s contains parent traversal", field)
-	}
-	var candidateAbs string
-	if filepath.IsAbs(provided) {
-		candidateAbs, err = safeAPIAbsPath(provided)
-	} else {
-		candidateAbs, err = safeAPIAbsPath(filepath.Join(rootAbs, provided))
-	}
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", field, err)
-	}
-	if err := ensureAPIPathUnder(rootAbs, candidateAbs); err != nil {
-		return "", fmt.Errorf("%s outside configured root: %w", field, err)
-	}
-	if err := rejectAPISymlinkPath(candidateAbs, field); err != nil {
-		return "", err
-	}
-	return candidateAbs, nil
-}
-
-func safeAPIAbsPath(p string) (string, error) {
-	p = strings.TrimSpace(p)
-	if p == "" {
-		return "", fmt.Errorf("path is empty")
-	}
-	if strings.ContainsRune(p, 0) {
-		return "", fmt.Errorf("path contains NUL")
-	}
-	if hasParentTraversal(p) {
-		return "", fmt.Errorf("path contains parent traversal")
-	}
-	abs, err := filepath.Abs(filepath.Clean(p))
-	if err != nil {
-		return "", err
-	}
-	return filepath.Clean(abs), nil
-}
-
-func hasParentTraversal(p string) bool {
-	p = strings.ReplaceAll(filepath.ToSlash(p), "\\", "/")
-	for _, part := range strings.Split(p, "/") {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
-}
-
-func ensureAPIPathUnder(baseAbs, candidateAbs string) error {
-	rel, err := filepath.Rel(filepath.Clean(baseAbs), filepath.Clean(candidateAbs))
-	if err != nil {
-		return err
-	}
-	if apiRelEscapesBase(rel) || filepath.IsAbs(rel) {
-		return fmt.Errorf("%q escapes %q", candidateAbs, baseAbs)
-	}
-	return nil
-}
-
-func apiRelEscapesBase(rel string) bool {
-	if rel == "." {
-		return false
-	}
-	if filepath.IsAbs(rel) {
-		return true
-	}
-	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
-}
-
-func rejectAPISymlinkPath(pathAbs, field string) error {
-	if pathAbs == "" || strings.ContainsRune(pathAbs, 0) || !filepath.IsAbs(pathAbs) {
-		return fmt.Errorf("%s path is not a validated absolute path", field)
-	}
-	validatedPathAbs := filepath.Clean(pathAbs)
-	if hasParentTraversal(validatedPathAbs) {
-		return fmt.Errorf("%s contains parent traversal", field)
-	}
-	// codeql[go/path-injection] -- validatedPathAbs is an absolute path returned by resolveImportAPIPath/safeAPIAbsPath; request candidates are filepath.Rel-constrained under the configured import root, reject NUL/parent traversal/absolute escape, and symlinks are rejected here before use.
-	info, err := os.Lstat(validatedPathAbs)
-	if err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("%s symlink rejected", field)
-	}
-	return nil
 }
