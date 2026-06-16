@@ -11,46 +11,60 @@ type Result struct {
 	IndexMap   []int  `json:"index_map"`
 }
 
-var tradToSimp = map[rune]rune{'輪': '轮', '臺': '台', '灣': '湾', '門': '门', '國': '国', '會': '会', '習': '习', '體': '体', '網': '网', '站': '站'}
-var cjkSep = map[rune]bool{'-': true, '_': true, '*': true, '.': true, '·': true, ' ': true, '\t': true}
+var tradToSimp = map[rune]rune{'輪': '轮', '臺': '台', '灣': '湾', '門': '门', '國': '国', '會': '会', '習': '习', '體': '体', '網': '网', '裏': '里'}
+var cjkSep = map[rune]bool{'-': true, '_': true, '*': true, '·': true, ' ': true, '\t': true}
 
 func Normalize(s string) string { return NormalizeWithMap(s).Normalized }
 func NormalizeWithMap(s string) Result {
-	runes := []rune(s)
+	orig := []rune(s)
 	out := []rune{}
 	idx := []int{}
-	pendingSpace := -1
-	for i, r := range runes {
+	pending := -1
+	for i, r := range orig {
 		r = fold(r)
-		if mapped, ok := tradToSimp[r]; ok {
-			r = mapped
+		if m, ok := tradToSimp[r]; ok {
+			r = m
 		}
 		if unicode.IsSpace(r) {
-			pendingSpace = i
+			pending = i
 			continue
 		}
-		if isSeparatorBetweenCJK(runes, i, r) {
+		if isSeparatorBetweenCJK(orig, i, r) {
 			continue
 		}
-		if pendingSpace >= 0 && len(out) > 0 && !(isCJK(out[len(out)-1]) && isCJK(r)) {
+		if pending >= 0 && len(out) > 0 && !(isCJK(out[len(out)-1]) && isCJK(r)) {
 			out = append(out, ' ')
-			idx = append(idx, pendingSpace)
+			idx = append(idx, pending)
 		}
-		pendingSpace = -1
+		pending = -1
 		out = append(out, r)
 		idx = append(idx, i)
 	}
 	return Result{Original: s, Normalized: string(out), IndexMap: idx}
 }
+func MapRange(n Result, start, end int) (int, int, bool) {
+	if start < 0 || end <= start || len(n.IndexMap) == 0 {
+		return start, end, true
+	}
+	if start >= len(n.IndexMap) {
+		return len([]rune(n.Original)), len([]rune(n.Original)), true
+	}
+	if end-1 >= len(n.IndexMap) {
+		end = len(n.IndexMap)
+	}
+	s := n.IndexMap[start]
+	e := n.IndexMap[end-1] + 1
+	approx := (end - start) != (e - s)
+	return s, e, approx
+}
 func fold(r rune) rune {
-	r = unicode.ToLower(r)
 	if r == 0x3000 {
 		return ' '
 	}
 	if r >= 0xFF01 && r <= 0xFF5E {
-		return r - 0xFEE0
+		r -= 0xFEE0
 	}
-	return r
+	return unicode.ToLower(r)
 }
 func isSeparatorBetweenCJK(orig []rune, i int, r rune) bool {
 	if !cjkSep[r] {
@@ -59,6 +73,9 @@ func isSeparatorBetweenCJK(orig []rune, i int, r rune) bool {
 	prev, next := rune(0), rune(0)
 	for j := i - 1; j >= 0; j-- {
 		p := fold(orig[j])
+		if m, ok := tradToSimp[p]; ok {
+			p = m
+		}
 		if cjkSep[p] || unicode.IsSpace(p) {
 			continue
 		}
@@ -67,6 +84,9 @@ func isSeparatorBetweenCJK(orig []rune, i int, r rune) bool {
 	}
 	for j := i + 1; j < len(orig); j++ {
 		n := fold(orig[j])
+		if m, ok := tradToSimp[n]; ok {
+			n = m
+		}
 		if cjkSep[n] || unicode.IsSpace(n) {
 			continue
 		}

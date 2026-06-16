@@ -84,3 +84,46 @@ The dashboard displays rule totals, enabled/disabled counts, keyword/regex/domai
 - Rule file watcher for automatic hot reload.
 - Batch performance tuning and streaming import tools.
 - Optional AI moderation providers behind the checker interface.
+
+## Phase 3 matching engine update
+
+Phase 3 upgrades OpenAudit with an internal Unicode-aware Aho-Corasick keyword matcher, deterministic hit sorting/deduplication, stronger normalization/index mapping, normalized regex/domain matching, pinyin and homophone variant hits, and richer risk metadata.
+
+### Positions and normalization
+
+Audit hits use rune offsets (`start` inclusive, `end` exclusive). When text is normalized, hits are mapped back through `NormalizedText.IndexMap`; if separators or collapsed characters make the source span approximate, `position_approximate` is returned. Examples: `法-轮-功`, `法_轮_功`, `法*轮*功`, and `法 輪 功` normalize to `法轮功`; full-width domains such as `Ｔ．ＭＥ/test` normalize to `t.me/test`.
+
+### Audit options
+
+Request options are backward compatible and default to:
+
+```json
+{
+  "normalize": true,
+  "pinyin": true,
+  "homophone": true,
+  "ai": false,
+  "include_explanations": true,
+  "include_normalized_text": true,
+  "include_positions": true,
+  "max_hits": 100
+}
+```
+
+### Risk detail
+
+Responses include `risk_detail` while preserving `risk_score` and `action`:
+
+```json
+{"strategy":"max","max_score":90,"hit_count":3,"block_count":1,"review_count":2}
+```
+
+### Domain, regex, pinyin, and homophone examples
+
+Domain rules safely match `example.com`, `www.example.com`, `a.b.example.com`, `https://www.example.com/path?a=1`, `WWW.EXAMPLE.COM`, `ｗｗｗ．ｅｘａｍｐｌｅ．ｃｏｍ`, `example.com:443`, and `https://example.com:443/path`, but not `fakeexample.com`. Regex rules are precompiled on rule load and run against normalized text. Pinyin and homophone rules compile mapping variants into the same efficient matching infrastructure and return `canonical` and `variant` fields.
+
+### Importer flags
+
+`go run ./cmd/importer --input examples/sensitive-lexicon-demo --output data/imported --risk medium --action review --source sensitive-lexicon --max-keywords-per-file 10000 --dry-run`
+
+Supported flags: `--input`, `--output`, `--category`, `--risk`, `--action`, `--source`, `--max-keywords-per-file`, and `--dry-run`. Without `--category`, the importer infers categories from relative directory names such as `政治 -> political`, `色情 -> porn`, `赌博 -> gambling`, `诈骗 -> scam`, `毒品 -> drugs`, `广告 -> spam`, and `网址 -> domain`.

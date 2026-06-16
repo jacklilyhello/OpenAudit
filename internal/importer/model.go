@@ -1,14 +1,20 @@
 package importer
 
 type Options struct {
-	Input    string
-	Output   string
-	Category string
-	Risk     string
-	Action   string
-	Source   string
+	Input              string
+	Output             string
+	Category           string
+	Risk               string
+	Action             string
+	Source             string
+	MaxKeywordsPerFile int
+	DryRun             bool
 }
 type Result struct {
-	Files    []string
-	Keywords int
+	Files                []string
+	Keywords             int
+	FilesScanned         int
+	KeywordsRead         int
+	KeywordsDeduplicated int
+	FilesWritten         int
 }

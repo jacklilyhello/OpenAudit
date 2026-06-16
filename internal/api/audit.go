@@ -14,7 +14,7 @@ func RegisterAudit(r gin.IRouter, e *engine.Engine) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, e.Audit(req.Text, req.Options.Normalize))
+		c.JSON(200, e.AuditWithOptions(req.Text, req.Options))
 	}
 	r.POST("/audit/text", handle)
 	r.POST("/audit/url", handle)

@@ -471,3 +471,32 @@ Files:
 
 Notes:
 - Append-only log entry for Phase 2.
+
+## Commit pending
+
+Date: 2026-06-16
+
+Summary:
+- Implement Phase 3 high-performance matching foundation
+- Add real Aho-Corasick keyword matcher
+- Improve normalized-to-original position mapping
+- Strengthen regex and domain matching
+- Improve pinyin/homophone variant hits
+- Add deterministic hit sorting and deduplication
+- Add risk_detail response metadata
+- Enhance Sensitive-lexicon-compatible importer
+- Improve admin dashboard and tests
+
+Files:
+- internal/matcher/...
+- internal/normalizer/...
+- internal/engine/...
+- internal/risk/...
+- internal/importer/...
+- internal/api/...
+- web/admin/...
+- README.md
+- CODEX.md
+
+Notes:
+- Append-only log entry for Phase 3.
