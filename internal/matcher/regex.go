@@ -11,7 +11,9 @@ type RegexRule struct {
 	Rule     rules.Rule
 	Patterns []*regexp.Regexp
 }
+type RegexMatcher struct{ Rules []RegexRule }
 
+func NewRegexMatcher(rs []RegexRule) RegexMatcher { return RegexMatcher{Rules: rs} }
 func CompileRegexRules(rs []rules.Rule) ([]RegexRule, error) {
 	out := make([]RegexRule, 0, len(rs))
 	for _, r := range rs {
@@ -19,7 +21,7 @@ func CompileRegexRules(rs []rules.Rule) ([]RegexRule, error) {
 		for _, p := range r.Patterns {
 			re, err := regexp.Compile(p)
 			if err != nil {
-				return nil, fmt.Errorf("rule %s pattern %q: %w", r.ID, p, err)
+				return nil, fmt.Errorf("invalid regex in %s: %w", r.Path, err)
 			}
 			rr.Patterns = append(rr.Patterns, re)
 		}
@@ -27,6 +29,7 @@ func CompileRegexRules(rs []rules.Rule) ([]RegexRule, error) {
 	}
 	return out, nil
 }
+func (m RegexMatcher) Match(text string) []Hit { return MatchRegex(text, m.Rules) }
 func MatchRegex(text string, rs []RegexRule) []Hit {
 	var hits []Hit
 	for _, rr := range rs {

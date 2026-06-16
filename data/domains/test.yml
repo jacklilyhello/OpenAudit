@@ -4,6 +4,11 @@ category: blocked_domain
 risk_level: medium
 action: review
 score: 60
+description: Blocked domain demo rule
+source: local
+tags:
+  - domain
+enabled: true
 domains:
   - epochtimes.com
   - blocked.test

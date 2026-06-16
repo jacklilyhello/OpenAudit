@@ -7,12 +7,10 @@ func Score(level string, override int) int {
 	switch level {
 	case "high":
 		return 90
-	case "medium":
-		return 60
 	case "low":
 		return 30
 	default:
-		return 0
+		return 60
 	}
 }
 func HigherAction(a, b string) string {

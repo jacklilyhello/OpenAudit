@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+type KeywordMatcher struct{ Rules []rules.Rule }
+
+func NewKeywordMatcher(rs []rules.Rule) KeywordMatcher { return KeywordMatcher{Rules: rs} }
+func (m KeywordMatcher) Match(text string) []Hit       { return MatchKeywords(text, m.Rules) }
 func MatchKeywords(text string, rs []rules.Rule) []Hit {
 	var hits []Hit
 	for _, r := range rs {

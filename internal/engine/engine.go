@@ -9,41 +9,49 @@ import (
 )
 
 type Engine struct {
-	mu    sync.RWMutex
-	root  string
-	set   rules.Set
-	regex []matcher.RegexRule
+	mu       sync.RWMutex
+	root     string
+	set      rules.Set
+	matchers []matcher.Matcher
 }
 
 func New(root string) (*Engine, error) { e := &Engine{root: root}; return e, e.Reload() }
-func (e *Engine) Reload() error {
-	set, err := rules.Load(e.root)
+func Prepare(root string) (rules.Set, []matcher.Matcher, error) {
+	set, err := rules.Load(root)
 	if err != nil {
-		return err
+		return set, nil, err
 	}
 	rr, err := matcher.CompileRegexRules(set.RegexRules)
+	if err != nil {
+		return set, nil, err
+	}
+	ms := []matcher.Matcher{matcher.NewKeywordMatcher(set.KeywordRules), matcher.NewRegexMatcher(rr), matcher.NewDomainMatcher(set.DomainRules), matcher.NewMappingMatcher("pinyin", set.PinyinRules), matcher.NewMappingMatcher("homophone", set.HomophoneRules)}
+	return set, ms, nil
+}
+func (e *Engine) Reload() error {
+	set, ms, err := Prepare(e.root)
 	if err != nil {
 		return err
 	}
 	e.mu.Lock()
 	e.set = set
-	e.regex = rr
+	e.matchers = ms
 	e.mu.Unlock()
 	return nil
 }
 func (e *Engine) Stats() rules.Stats { e.mu.RLock(); defer e.mu.RUnlock(); return e.set.Stats() }
 func (e *Engine) Audit(text string, normalize bool) Result {
 	e.mu.RLock()
-	set := e.set
-	regex := e.regex
+	ms := append([]matcher.Matcher(nil), e.matchers...)
 	e.mu.RUnlock()
 	norm := text
 	if normalize {
 		norm = normalizer.Normalize(text)
 	}
-	hits := matcher.MatchKeywords(norm, set.KeywordRules)
-	hits = append(hits, matcher.MatchRegex(norm, regex)...)
-	hits = append(hits, matcher.MatchDomains(norm, set.DomainRules)...)
+	var hits []matcher.Hit
+	for _, m := range ms {
+		hits = append(hits, m.Match(norm)...)
+	}
 	res := Result{Matched: len(hits) > 0, Action: "pass", OriginalText: text, NormalizedText: norm, Hits: hits}
 	for _, h := range hits {
 		if h.Score > res.RiskScore {

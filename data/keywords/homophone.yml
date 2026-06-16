@@ -1,0 +1,16 @@
+id: homophone_001
+type: homophone
+category: political
+risk_level: high
+action: block
+score: 85
+description: Homophone variants
+source: local
+tags:
+  - homophone
+enabled: true
+mapping:
+  法轮功:
+    - 发轮功
+    - 法轮工
+    - 珐轮功

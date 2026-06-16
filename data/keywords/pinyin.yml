@@ -1,0 +1,16 @@
+id: pinyin_001
+type: pinyin
+category: political
+risk_level: high
+action: block
+score: 80
+description: Pinyin variants
+source: local
+tags:
+  - pinyin
+enabled: true
+mapping:
+  法轮功:
+    - falungong
+    - fa lun gong
+    - flg

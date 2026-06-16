@@ -446,3 +446,28 @@ Files:
 
 Notes:
 - Phase 1 uses local YAML files only and includes a lightweight Gin-compatible local module for this MVP environment.
+
+## Commit pending
+
+Date: 2026-06-16
+
+Summary:
+- Implement Phase 2 rule model enhancement
+- Add safer atomic rule hot reload
+- Add Sensitive-lexicon-compatible txt importer foundation
+- Add pinyin and homophone mapping support
+- Improve normalization and stats
+- Add tests
+
+Files:
+- internal/rules/...
+- internal/importer/...
+- internal/matcher/...
+- internal/normalizer/...
+- internal/api/...
+- web/admin/...
+- README.md
+- CODEX.md
+
+Notes:
+- Append-only log entry for Phase 2.

@@ -4,6 +4,12 @@ category: social
 risk_level: medium
 action: review
 score: 50
+description: Telegram link detection
+source: local
+tags:
+  - social
+  - url
+enabled: true
 patterns:
   - '(?i)t\.me/[a-zA-Z0-9_]+'
   - '(?i)telegram\.me/[a-zA-Z0-9_]+'

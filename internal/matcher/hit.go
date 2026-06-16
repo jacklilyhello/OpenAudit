@@ -8,7 +8,9 @@ type Hit struct {
 	Action          string `json:"action"`
 	Match           string `json:"match"`
 	NormalizedMatch string `json:"normalized_match"`
+	Canonical       string `json:"canonical,omitempty"`
 	Start           int    `json:"start"`
 	End             int    `json:"end"`
 	Score           int    `json:"score"`
 }
+type Matcher interface{ Match(text string) []Hit }
