@@ -2,8 +2,7 @@ name: Govulncheck
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
   schedule:
     - cron: "0 3 * * 1"
@@ -21,13 +20,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.x"
+          go-version: "1.23.x"
           cache: true
 
-      - name: Install govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Install govulncheck CLI
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck
         run: |
+          echo "govulncheck fails this workflow when reachable vulnerabilities are found. Review package, symbol, and fixed-version output."
           govulncheck ./...

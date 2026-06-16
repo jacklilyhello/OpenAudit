@@ -1,0 +1,14 @@
+# Local/development Docker Compose file for OpenAudit.
+# Production deployments should provide secrets through environment variables or
+# a secrets manager and protect /admin behind Cloudflare Access + Tunnel.
+services:
+  openaudit:
+    build: .
+    image: openaudit:local
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./storage:/app/storage
+      - ./config.example.yml:/app/config.yml:ro
+    command: ["--config", "/app/config.yml"]

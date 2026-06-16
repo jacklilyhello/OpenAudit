@@ -532,3 +532,39 @@ Files:
 Notes:
 - Append-only log entry for Phase 4.
 - Existing Phase 1/2/3 APIs remain backward compatible.
+
+## Commit pending
+
+Date: 2026-06-16
+
+Summary:
+- Implement Phase 5 engineering and deployment foundation
+- Stabilize CI/security scanning workflows
+- Add Makefile
+- Add Dockerfile and docker-compose.yml
+- Add release artifact workflow
+- Add smoke test script
+- Add deployment, security, API, and import documentation
+- Update README with neutral project description and production admin warnings
+- Preserve future Cloudflare Access, API key, VPS tunnel, and external ruleset requirements
+
+Files:
+- .github/workflows/...
+- Makefile
+- Dockerfile
+- .dockerignore
+- docker-compose.yml
+- scripts/smoke.sh
+- DEPLOYMENT.md
+- SECURITY.md
+- IMPORTING.md
+- API.md
+- README.md
+- .env.example
+- .gitignore
+- CODEX.md
+
+Notes:
+- Append-only log entry for Phase 5.
+- Production Cloudflare Access enforcement is documented in Phase 5 and reserved for implementation in Phase 6.
+- Existing Phase 1/2/3/4 APIs remain backward compatible.
