@@ -168,3 +168,15 @@ Scanner policy: fix real gosec findings where practical. CodeQL may still requir
 ```sh
 $(go env GOPATH)/bin/gosec ./...
 ```
+
+## Phase 11 rule release workflow
+
+OpenAudit now supports a rule lifecycle around the existing YAML source of truth:
+
+* `draft` rules are editable and inactive.
+* `staged` rules are publish candidates and can be validated or simulated.
+* `published` rules are the active live audit ruleset. Existing YAML rules default to `published`.
+
+Draft and staged YAML plus release snapshots are stored under `data/.openaudit-release/`, which is constrained by `internal/safepath` and ignored by the live loader. Successful publishes create monotonic versions (`v1`, `v2`, ...), write release metadata, reload the active matcher, and persist release/lifecycle/validation rows into SQLite where configured. Whole-ruleset rollback restores a prior snapshot and creates a new rollback release.
+
+Phase 11 also adds bulk enable/disable, conflict detection, staged/draft/published hit simulation, pre-publish validation, and import batch rollback when batch metadata includes generated files. See [API.md](API.md) for endpoint details.

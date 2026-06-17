@@ -1,6 +1,7 @@
 package safepath
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -39,6 +40,12 @@ func (r Root) walkDir(dir Path, fn func(Path, fs.DirEntry) error) error {
 			return fmt.Errorf("%w: %s", ErrSymlink, child.String())
 		}
 		if err := fn(child, entry); err != nil {
+			if errors.Is(err, fs.SkipDir) {
+				if info.IsDir() {
+					continue
+				}
+				return nil
+			}
 			return err
 		}
 		if info.IsDir() {

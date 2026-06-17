@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/rulehistory"
+	"github.com/openaudit/openaudit/internal/rulerelease"
 	"github.com/openaudit/openaudit/internal/rules"
 	"github.com/openaudit/openaudit/internal/safepath"
 	"gopkg.in/yaml.v3"
@@ -28,6 +29,9 @@ func RegisterRules(r gin.IRouter, e *engine.Engine, h HistoryServices) {
 	r.GET("/rules", func(c *gin.Context) { listRules(c, e) })
 	r.GET("/rules/categories", func(c *gin.Context) { statRules(c, e, "category") })
 	r.GET("/rules/sources", func(c *gin.Context) { statRules(c, e, "source") })
+	releaseManager := rulerelease.NewManager(e.Root(), h.Storage)
+	registerRuleReleaseRoutes(r, e, h, releaseManager)
+	registerImportRollback(r, e, h, releaseManager)
 	r.GET("/rules/:id", func(c *gin.Context) { getRule(c, e, c.Param("id")) })
 	r.POST("/rules/create", func(c *gin.Context) { createRule(c, e, h) })
 	r.PATCH("/rules/update/:id", func(c *gin.Context) { updateRule(c, e, h, c.Param("id")) })

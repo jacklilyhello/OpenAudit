@@ -19,6 +19,9 @@ func Load(root string) (Set, error) {
 	}
 	walkRoot := filepath.Clean(root)
 	err = safeRoot.Walk(func(path safepath.Path, d fs.DirEntry) error {
+		if d.IsDir() && strings.HasPrefix(d.Name(), ".") {
+			return fs.SkipDir
+		}
 		if d.IsDir() || !(strings.HasSuffix(path.String(), ".yml") || strings.HasSuffix(path.String(), ".yaml")) {
 			return nil
 		}
@@ -37,6 +40,9 @@ func Load(root string) (Set, error) {
 		r.Path = filepath.Join(walkRoot, rel)
 		if err := NormalizeAndValidate(&r); err != nil {
 			return err
+		}
+		if r.State == "" {
+			r.State = "published"
 		}
 		set.Rules = append(set.Rules, r)
 		if !r.IsEnabled() {

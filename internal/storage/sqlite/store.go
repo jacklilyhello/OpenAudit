@@ -400,6 +400,149 @@ func (s *Store) QueryAdminOperations(ctx context.Context, f storage.AdminFilter)
 	}
 	return storage.AdminPage{Items: items, Page: page(total, limit, offset)}, nil
 }
+func (s *Store) UpsertRuleLifecycle(ctx context.Context, l storage.RuleLifecycle) error {
+	if l.UpdatedAt.IsZero() {
+		l.UpdatedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO rule_lifecycle (rule_id,state,updated_at,actor,source,metadata_json) VALUES (?,?,?,?,?,?) ON CONFLICT(rule_id,state) DO UPDATE SET updated_at=excluded.updated_at, actor=excluded.actor, source=excluded.source, metadata_json=excluded.metadata_json`, l.RuleID, l.State, ts(l.UpdatedAt), l.Actor, l.Source, l.MetadataJSON)
+	return err
+}
+func (s *Store) QueryRuleLifecycle(ctx context.Context, f storage.LifecycleFilter) (storage.LifecyclePage, error) {
+	limit, offset := storage.NormalizeLimitOffset(f.Limit, f.Offset)
+	where, args := []string{"1=1"}, []any{}
+	if f.RuleID != "" {
+		where = append(where, "rule_id = ?")
+		args = append(args, f.RuleID)
+	}
+	if f.State != "" {
+		where = append(where, "state = ?")
+		args = append(args, f.State)
+	}
+	wc := strings.Join(where, " AND ")
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM rule_lifecycle WHERE "+wc, args...).Scan(&total); err != nil {
+		return storage.LifecyclePage{}, err
+	}
+	// #nosec G202 -- wc is assembled only from fixed internal predicates; request values are passed as SQL parameters.
+	rows, err := s.db.QueryContext(ctx, "SELECT id,rule_id,state,updated_at,actor,source,metadata_json FROM rule_lifecycle WHERE "+wc+" ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?", append(append([]any{}, args...), limit, offset)...)
+	if err != nil {
+		return storage.LifecyclePage{}, err
+	}
+	defer rows.Close()
+	var items []storage.RuleLifecycle
+	for rows.Next() {
+		var l storage.RuleLifecycle
+		var updated string
+		if err := rows.Scan(&l.ID, &l.RuleID, &l.State, &updated, &l.Actor, &l.Source, &l.MetadataJSON); err != nil {
+			return storage.LifecyclePage{}, err
+		}
+		l.UpdatedAt = parseTS(updated)
+		items = append(items, l)
+	}
+	if err := rows.Err(); err != nil {
+		return storage.LifecyclePage{}, err
+	}
+	return storage.LifecyclePage{Items: items, Page: page(total, limit, offset)}, nil
+}
+func (s *Store) InsertRuleRelease(ctx context.Context, r storage.RuleRelease, items []storage.RuleReleaseItem) error {
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = time.Now().UTC()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO rule_releases (version,created_at,actor,status,rule_count,added_count,updated_count,removed_count,snapshot_path,validation_json,metadata_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, r.Version, ts(r.CreatedAt), r.Actor, r.Status, r.RuleCount, r.AddedCount, r.UpdatedCount, r.RemovedCount, r.SnapshotPath, r.ValidationJSON, r.MetadataJSON); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	for _, item := range items {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO rule_release_items (version,rule_id,operation,before_hash,after_hash,file_path,metadata_json) VALUES (?,?,?,?,?,?,?)`, r.Version, item.RuleID, item.Operation, item.BeforeHash, item.AfterHash, item.FilePath, item.MetadataJSON); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+func (s *Store) QueryRuleReleases(ctx context.Context, f storage.ReleaseFilter) (storage.ReleasePage, error) {
+	limit, offset := storage.NormalizeLimitOffset(f.Limit, f.Offset)
+	where, args := []string{"1=1"}, []any{}
+	if f.Status != "" {
+		where = append(where, "status = ?")
+		args = append(args, f.Status)
+	}
+	wc := strings.Join(where, " AND ")
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM rule_releases WHERE "+wc, args...).Scan(&total); err != nil {
+		return storage.ReleasePage{}, err
+	}
+	// #nosec G202 -- wc is assembled only from fixed internal predicates; request values are passed as SQL parameters.
+	rows, err := s.db.QueryContext(ctx, "SELECT id,version,created_at,actor,status,rule_count,added_count,updated_count,removed_count,snapshot_path,validation_json,metadata_json FROM rule_releases WHERE "+wc+" ORDER BY id DESC LIMIT ? OFFSET ?", append(append([]any{}, args...), limit, offset)...)
+	if err != nil {
+		return storage.ReleasePage{}, err
+	}
+	defer rows.Close()
+	var items []storage.RuleRelease
+	for rows.Next() {
+		r, err := scanRelease(rows)
+		if err != nil {
+			return storage.ReleasePage{}, err
+		}
+		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		return storage.ReleasePage{}, err
+	}
+	return storage.ReleasePage{Items: items, Page: page(total, limit, offset)}, nil
+}
+
+type releaseScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanRelease(rows releaseScanner) (storage.RuleRelease, error) {
+	var r storage.RuleRelease
+	var created string
+	if err := rows.Scan(&r.ID, &r.Version, &created, &r.Actor, &r.Status, &r.RuleCount, &r.AddedCount, &r.UpdatedCount, &r.RemovedCount, &r.SnapshotPath, &r.ValidationJSON, &r.MetadataJSON); err != nil {
+		return storage.RuleRelease{}, err
+	}
+	r.CreatedAt = parseTS(created)
+	return r, nil
+}
+func (s *Store) GetRuleRelease(ctx context.Context, version string) (storage.RuleRelease, []storage.RuleReleaseItem, bool, error) {
+	row := s.db.QueryRowContext(ctx, "SELECT id,version,created_at,actor,status,rule_count,added_count,updated_count,removed_count,snapshot_path,validation_json,metadata_json FROM rule_releases WHERE version = ?", version)
+	r, err := scanRelease(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.RuleRelease{}, nil, false, nil
+	}
+	if err != nil {
+		return storage.RuleRelease{}, nil, false, err
+	}
+	rows, err := s.db.QueryContext(ctx, "SELECT id,version,rule_id,operation,before_hash,after_hash,file_path,metadata_json FROM rule_release_items WHERE version = ? ORDER BY id", version)
+	if err != nil {
+		return storage.RuleRelease{}, nil, false, err
+	}
+	defer rows.Close()
+	var items []storage.RuleReleaseItem
+	for rows.Next() {
+		var item storage.RuleReleaseItem
+		if err := rows.Scan(&item.ID, &item.Version, &item.RuleID, &item.Operation, &item.BeforeHash, &item.AfterHash, &item.FilePath, &item.MetadataJSON); err != nil {
+			return storage.RuleRelease{}, nil, false, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return storage.RuleRelease{}, nil, false, err
+	}
+	return r, items, true, nil
+}
+func (s *Store) InsertRuleValidationRun(ctx context.Context, v storage.RuleValidationRun) error {
+	if v.CreatedAt.IsZero() {
+		v.CreatedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO rule_validation_runs (run_id,created_at,actor,target_state,target_version,status,conflicts_json,simulation_json,metadata_json) VALUES (?,?,?,?,?,?,?,?,?)`, v.RunID, ts(v.CreatedAt), v.Actor, v.TargetState, v.TargetVersion, v.Status, v.ConflictsJSON, v.SimulationJSON, v.MetadataJSON)
+	return err
+}
 func StorageRootFromDBPath(path string) (string, string) {
 	clean := filepath.Clean(path)
 	return filepath.Dir(clean), filepath.Base(clean)

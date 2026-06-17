@@ -28,12 +28,23 @@ func Prepare(root string) (rules.Set, []matcher.Matcher, error) {
 	if err != nil {
 		return set, nil, err
 	}
+	ms, err := PrepareSet(set)
+	return set, ms, err
+}
+func NewFromSet(set rules.Set) (*Engine, error) {
+	ms, err := PrepareSet(set)
+	if err != nil {
+		return nil, err
+	}
+	return &Engine{set: set, keyword: ms[0], regex: ms[1], domain: ms[2], pinyin: ms[3], homophone: ms[4]}, nil
+}
+func PrepareSet(set rules.Set) ([]matcher.Matcher, error) {
 	rr, err := matcher.CompileRegexRules(set.RegexRules)
 	if err != nil {
-		return set, nil, err
+		return nil, err
 	}
 	ms := []matcher.Matcher{matcher.NewKeywordMatcher(set.KeywordRules), matcher.NewRegexMatcher(rr), matcher.NewDomainMatcher(set.DomainRules), matcher.NewMappingMatcher("pinyin", set.PinyinRules), matcher.NewMappingMatcher("homophone", set.HomophoneRules)}
-	return set, ms, nil
+	return ms, nil
 }
 func (e *Engine) Reload() error {
 	set, ms, err := Prepare(e.root)

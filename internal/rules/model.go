@@ -2,6 +2,7 @@ package rules
 
 type Rule struct {
 	ID          string              `yaml:"id" json:"id"`
+	State       string              `yaml:"state,omitempty" json:"state,omitempty"`
 	Type        string              `yaml:"type" json:"type"`
 	Category    string              `yaml:"category" json:"category"`
 	RiskLevel   string              `yaml:"risk_level" json:"risk_level"`

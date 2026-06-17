@@ -30,4 +30,17 @@ CREATE INDEX IF NOT EXISTS idx_admin_operations_operation ON admin_operations(op
 CREATE INDEX IF NOT EXISTS idx_admin_operations_actor ON admin_operations(actor);
 CREATE INDEX IF NOT EXISTS idx_admin_operations_resource_type ON admin_operations(resource_type);
 CREATE INDEX IF NOT EXISTS idx_admin_operations_resource_id ON admin_operations(resource_id);
+`}, {ID: "002_phase11_rule_release", SQL: `
+CREATE TABLE IF NOT EXISTS rule_lifecycle (id INTEGER PRIMARY KEY AUTOINCREMENT, rule_id TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL, actor TEXT, source TEXT, metadata_json TEXT, UNIQUE(rule_id, state));
+CREATE INDEX IF NOT EXISTS idx_rule_lifecycle_rule_id ON rule_lifecycle(rule_id);
+CREATE INDEX IF NOT EXISTS idx_rule_lifecycle_state ON rule_lifecycle(state);
+CREATE TABLE IF NOT EXISTS rule_releases (id INTEGER PRIMARY KEY AUTOINCREMENT, version TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL, actor TEXT, status TEXT, rule_count INTEGER, added_count INTEGER, updated_count INTEGER, removed_count INTEGER, snapshot_path TEXT, validation_json TEXT, metadata_json TEXT);
+CREATE INDEX IF NOT EXISTS idx_rule_releases_created_at ON rule_releases(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_rule_releases_status ON rule_releases(status);
+CREATE TABLE IF NOT EXISTS rule_release_items (id INTEGER PRIMARY KEY AUTOINCREMENT, version TEXT NOT NULL, rule_id TEXT, operation TEXT, before_hash TEXT, after_hash TEXT, file_path TEXT, metadata_json TEXT, FOREIGN KEY(version) REFERENCES rule_releases(version) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_rule_release_items_version ON rule_release_items(version);
+CREATE INDEX IF NOT EXISTS idx_rule_release_items_rule_id ON rule_release_items(rule_id);
+CREATE TABLE IF NOT EXISTS rule_validation_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL, actor TEXT, target_state TEXT, target_version TEXT, status TEXT, conflicts_json TEXT, simulation_json TEXT, metadata_json TEXT);
+CREATE INDEX IF NOT EXISTS idx_rule_validation_runs_created_at ON rule_validation_runs(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_rule_validation_runs_target ON rule_validation_runs(target_state, target_version);
 `}}

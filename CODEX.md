@@ -761,3 +761,52 @@ Notes:
 * JSONL remains available as fallback or legacy compatibility where practical.
 * CodeQL clean output is not required for this phase; remaining custom sanitizer findings should be reviewed against documented invariants.
 * Gosec findings are fixed where practical and remaining findings are reported.
+
+## Commit pending
+
+Date: 2026-06-17
+
+Summary:
+
+* Implement Phase 11 rule versioning and release workflow
+* Add draft/staged/published rule lifecycle support
+* Add pre-publish validation and rule conflict detection
+* Add ruleset version tracking and release metadata
+* Add whole-ruleset rollback to previous published versions
+* Add import batch rollback where sufficient metadata exists
+* Add bulk enable/disable operations
+* Add rule hit simulation against published/staged/draft scopes where practical
+* Persist lifecycle/release metadata through the Phase 10 SQLite backend where practical
+* Preserve existing YAML rule source-of-truth behavior and existing APIs
+* Preserve Phase 9 safepath protections and Phase 10 SQLite/JSONL compatibility
+* Update API, security, deployment, importing, README, and CODEX documentation
+* Apply the Phase 11 scanner policy: fix real issues, document custom sanitizer invariants, and do not damage architecture for CodeQL zero findings
+
+Files:
+
+* internal/api/...
+* internal/rules/...
+* internal/rulerelease/...
+* internal/rulehistory/...
+* internal/importer/...
+* internal/storage/...
+* internal/storage/sqlite/...
+* internal/storage/migrations/...
+* internal/safepath/...
+* cmd/server/...
+* web/admin/...
+* README.md
+* SECURITY.md
+* IMPORTING.md
+* DEPLOYMENT.md
+* API.md
+* CODEX.md
+
+Notes:
+
+* Append-only log entry for Phase 11.
+* Existing Phase 1-10 APIs remain backward compatible.
+* YAML rule files remain the source of truth for rule content.
+* SQLite stores lifecycle, release, validation, rollback, and admin operation metadata where practical.
+* CodeQL clean output is not required for this phase; remaining custom sanitizer findings should be reviewed against documented invariants.
+* Gosec findings are fixed where practical and remaining findings are reported.
