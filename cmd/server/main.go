@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/openaudit/openaudit/internal/config"
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/logstore"
+	"github.com/openaudit/openaudit/internal/review"
 	"github.com/openaudit/openaudit/internal/rulehistory"
 	"github.com/openaudit/openaudit/internal/security"
 	"github.com/openaudit/openaudit/internal/storage"
@@ -72,8 +74,18 @@ func main() {
 		}
 		aiSvc = ai.NewService(cfg.AI, aiLogger)
 	}
-	api.RegisterAuditWithAI(r, e, cfg.Limits, logs, aiSvc)
-	api.RegisterBatchWithAI(r, e, cfg.Limits, aiSvc)
+	var reviewSvc *review.Service
+	if persistent != nil {
+		if rec, ok, err := persistent.GetReviewPolicy(context.Background()); err == nil && ok {
+			var stored config.ReviewPolicyConfig
+			if err := json.Unmarshal([]byte(rec.PolicyJSON), &stored); err == nil {
+				cfg.ReviewPolicy = stored
+			}
+		}
+		reviewSvc = review.NewService(cfg.ReviewPolicy, persistent)
+	}
+	api.RegisterAuditWithReview(r, e, cfg.Limits, logs, aiSvc, reviewSvc)
+	api.RegisterBatchWithReview(r, e, cfg.Limits, aiSvc, reviewSvc)
 	hist := api.HistoryServices{TrustedProxies: cfg.Server.TrustedProxies, Storage: persistent}
 	if cfg.RuleHistory.Enabled {
 		hist.Changes = rulehistory.New(cfg.RuleHistory.Path, cfg.RuleHistory.MaxEntries)
@@ -88,6 +100,7 @@ func main() {
 	api.RegisterImports(r, cfg, hist.Batches)
 	api.RegisterLogs(r, logs)
 	api.RegisterStorageExports(r, persistent)
+	api.RegisterReview(r, reviewSvc, persistent, hist)
 	if cfg.Admin.Enabled {
 		admin.RegisterAt(r, cfg.Admin.Path)
 	}

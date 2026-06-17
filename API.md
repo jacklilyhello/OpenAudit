@@ -133,6 +133,21 @@ Variant-capable hits preserve the existing fields and may include additional met
 
 Generated pinyin, initials, and homophone-only matches are intended for review-first workflows and default to `review` when enabled through keyword `variant` config. Exact keyword, regex, and domain rules keep their authored action.
 
+When review policy creates or logs an internal case, audit responses may include additive review fields without removing existing fields:
+
+```json
+{
+  "review_status": "pending",
+  "review_case_id": "rc_...",
+  "temporary_action": "temporary_allow",
+  "review_reason": "ai_score_above_review_threshold",
+  "review_priority": "medium",
+  "review_policy_version": "phase15-review-policy-v1"
+}
+```
+
+`temporary_action` can be `temporary_allow`, `temporary_block`, `review_only`, `log_only`, or `none`. `log_only` adds review metadata without creating a queue row. AI and variant review routing is internal platform moderation only; there are no public ticket, appeal, feedback, reply, or customer messaging APIs.
+
 ### POST `/audit/batch`
 
 ```bash
@@ -258,6 +273,65 @@ curl 'http://localhost:8080/logs/recent?limit=50&matched=true'
 ```
 
 ### GET `/logs/stats`
+
+### Review Queue APIs
+
+Review queue APIs are protected internal admin/management endpoints. They expose capped content excerpts and compact metadata only.
+
+#### GET `/review/cases`
+
+Filters: `status`, `priority`, `category`, `source`, `temporary_action`, `ai_risk_level`, `variant_risk_level`, `min_score`, `max_score`, `created_from`, `created_to`, `limit`, `offset`.
+
+Sort allowlist: `created_at`, `updated_at`, `priority`, `ai_score`, `variant_score`, `status`.
+
+```bash
+curl 'http://localhost:8080/review/cases?status=pending&sort=created_at&limit=50' \
+  -H 'Authorization: Bearer dev-key'
+```
+
+#### GET `/review/cases/:case_id`
+
+Returns the review case plus internal event history.
+
+#### POST `/review/cases/:case_id/decide`
+
+Allowed actions: `approve`, `reject`, `ignore`, `escalate`, `reopen`, `add_note`.
+
+```bash
+curl -X POST http://localhost:8080/review/cases/rc_example/decide \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer dev-key' \
+  -d '{"action":"approve","note":"Internal review completed."}'
+```
+
+`POST /review/cases/:case_id/note`, `POST /review/cases/:case_id/reopen`, and `POST /review/cases/:case_id/escalate` are convenience endpoints for internal notes, reopening, and escalation.
+
+#### POST `/review/cases/bulk/decide`
+
+Bulk decisions are capped at 100 case IDs and validate all IDs before committing.
+
+```bash
+curl -X POST http://localhost:8080/review/cases/bulk/decide \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer dev-key' \
+  -d '{"case_ids":["rc_a","rc_b"],"action":"ignore","note":"No action needed."}'
+```
+
+#### GET `/review/stats`
+
+Returns pending cases, critical pending, temporary blocked, temporary allowed, reviewed today, average pending age, and total cases.
+
+#### GET `/review/policy`
+
+Returns the active review policy and persisted version when available.
+
+#### PUT `/review/policy`
+
+Updates review policy thresholds and temporary action behavior. Thresholds must be between 0 and 1, and the temporary block threshold must be greater than or equal to the review threshold.
+
+#### GET `/review/export`
+
+Exports review cases as `json` or `csv`. Export rows are capped by policy and storage limits.
 
 ```bash
 curl http://localhost:8080/logs/stats

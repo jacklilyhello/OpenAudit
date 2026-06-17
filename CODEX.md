@@ -904,3 +904,54 @@ Notes:
 * SQLite AI audit logs store compact metadata only by default.
 * CodeQL clean output is not required for this phase; remaining provider/logging/cache findings should be reviewed against documented invariants.
 * Gosec findings are fixed where practical and remaining findings are reported.
+
+## Commit pending
+
+Date: 2026-06-17
+
+Summary:
+
+* Implement Phase 15 internal human review queue and admin moderation workflow
+* Add review policy thresholds for AI and variant uncertainty
+* Add temporary allow / temporary block / review-only / log-only policy behavior
+* Add persistent internal review cases
+* Add operator decisions and internal notes
+* Add bulk review decisions
+* Add review queue APIs and stats
+* Add review policy APIs
+* Add review audit trail and admin operation logging where practical
+* Integrate review queue with AI and variant metadata while preserving deterministic rule-engine decisions
+* Improve admin dashboard layout with visual review queue, risk badges, policy settings, and case details
+* Preserve AI review-first behavior and keep AI disabled/hard-block disabled by default
+* Preserve Phase 1-14 behavior and API compatibility
+* Update API, security, deployment, README, and CODEX documentation
+* Apply the Phase 15 scanner policy: fix real issues, document custom sanitizer invariants, and do not damage architecture for CodeQL zero findings
+
+Files:
+
+* internal/review/...
+* internal/api/...
+* internal/engine/...
+* internal/ai/...
+* internal/config/...
+* internal/storage/...
+* internal/storage/sqlite/...
+* internal/storage/migrations/...
+* web/admin/...
+* README.md
+* SECURITY.md
+* DEPLOYMENT.md
+* API.md
+* CODEX.md
+
+Notes:
+
+* Append-only log entry for Phase 15.
+* This is an internal platform moderation workflow, not a customer support ticket system.
+* There is no user feedback, appeal, reply, or customer-service workflow.
+* AI does not hard block by default.
+* Rule engine remains primary.
+* Uncertain AI/variant results are routed according to admin policy.
+* All temporary actions and human decisions are auditable.
+* CodeQL clean output is not required for this phase; remaining custom sanitizer findings should be reviewed against documented invariants.
+* Gosec findings are fixed where practical and remaining findings are reported.

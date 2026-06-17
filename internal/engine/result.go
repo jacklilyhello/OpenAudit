@@ -35,12 +35,18 @@ type AIReview struct {
 	Error         string     `json:"error,omitempty"`
 }
 type Result struct {
-	Matched        bool       `json:"matched"`
-	Action         string     `json:"action"`
-	RiskScore      int        `json:"risk_score"`
-	RiskDetail     RiskDetail `json:"risk_detail"`
-	OriginalText   string     `json:"original_text"`
-	NormalizedText string     `json:"normalized_text,omitempty"`
-	Hits           []Hit      `json:"hits"`
-	AIReview       *AIReview  `json:"ai_review,omitempty"`
+	Matched             bool       `json:"matched"`
+	Action              string     `json:"action"`
+	RiskScore           int        `json:"risk_score"`
+	RiskDetail          RiskDetail `json:"risk_detail"`
+	OriginalText        string     `json:"original_text"`
+	NormalizedText      string     `json:"normalized_text,omitempty"`
+	Hits                []Hit      `json:"hits"`
+	AIReview            *AIReview  `json:"ai_review,omitempty"`
+	ReviewStatus        string     `json:"review_status,omitempty"`
+	ReviewCaseID        string     `json:"review_case_id,omitempty"`
+	TemporaryAction     string     `json:"temporary_action,omitempty"`
+	ReviewReason        string     `json:"review_reason,omitempty"`
+	ReviewPriority      string     `json:"review_priority,omitempty"`
+	ReviewPolicyVersion string     `json:"review_policy_version,omitempty"`
 }

@@ -120,6 +120,23 @@ ai:
       base_url: "http://127.0.0.1:11434/v1"
       model: "llama3.1"
 
+review_policy:
+  enabled: true
+  ai_review_enabled: true
+  variant_review_enabled: true
+  ai_score_review_threshold: 0.70
+  ai_score_temporary_block_threshold: 0.90
+  ai_score_log_only_below: 0.40
+  variant_score_review_threshold: 0.70
+  uncertain_default_action: "temporary_allow"
+  allow_ai_hard_block: false
+  require_human_review_for_ai_only_matches: true
+  require_human_review_for_homophone_matches: true
+  require_human_review_for_pinyin_matches: true
+  retention_days: 30
+  content_excerpt_max_bytes: 2048
+  max_export_rows: 10000
+
 rule_history:
   enabled: true
   path: "./storage/rule-history/history.jsonl"

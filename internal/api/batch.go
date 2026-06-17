@@ -6,6 +6,7 @@ import (
 	"github.com/openaudit/openaudit/internal/config"
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/model"
+	"github.com/openaudit/openaudit/internal/review"
 	"net/http"
 )
 
@@ -16,6 +17,9 @@ func RegisterBatchWithOptions(r gin.IRouter, e *engine.Engine, limits config.Lim
 	RegisterBatchWithAI(r, e, limits, nil)
 }
 func RegisterBatchWithAI(r gin.IRouter, e *engine.Engine, limits config.LimitsConfig, aiSvc *ai.Service) {
+	RegisterBatchWithReview(r, e, limits, aiSvc, nil)
+}
+func RegisterBatchWithReview(r gin.IRouter, e *engine.Engine, limits config.LimitsConfig, aiSvc *ai.Service, reviewSvc *review.Service) {
 	r.POST("/audit/batch", func(c *gin.Context) {
 		var req model.AuditBatchRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -42,6 +46,9 @@ func RegisterBatchWithAI(r gin.IRouter, e *engine.Engine, limits config.LimitsCo
 			res := e.AuditWithOptions(item, req.Options)
 			if shouldRunAI(req.Options, aiSvc) {
 				res.AIReview = ai.ToEngineReview(aiSvc.Review(c.Request.Context(), item, res))
+			}
+			if reviewSvc != nil {
+				_ = reviewSvc.Evaluate(c.Request.Context(), "audit_batch", item, &res)
 			}
 			results = append(results, res)
 		}
