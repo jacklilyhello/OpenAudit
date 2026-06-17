@@ -78,6 +78,35 @@ curl -X POST http://localhost:8080/audit/text \
 
 Response includes `matched`, `risk_score`, `action`, `hits`, and optional normalized text/risk detail fields.
 
+When `ai.enabled: true` or request option `"ai": true` is used with a configured provider, responses may include additive `ai_review` metadata. The deterministic rule engine still runs first and remains authoritative: AI failures do not fail the audit request, and AI-only block decisions are reported as `block_recommended` by default rather than changing the top-level `action`.
+
+```json
+{
+  "matched": true,
+  "action": "block",
+  "risk_score": 100,
+  "hits": [],
+  "ai_review": {
+    "enabled": true,
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "status": "success",
+    "action": "review",
+    "confidence": 0.82,
+    "risk_level": "high",
+    "category": "policy",
+    "explanation": "Supplementary semantic review recommends operator review.",
+    "reasons": ["context requires human review"],
+    "cache_hit": false,
+    "latency_ms": 350,
+    "token_usage": {"prompt_tokens": 120, "completion_tokens": 50, "total_tokens": 170},
+    "estimated_cost": 0.0
+  }
+}
+```
+
+AI statuses include `success`, `cached`, `skipped`, `timeout`, `error`, and `circuit_open`.
+
 Variant-capable hits preserve the existing fields and may include additional metadata:
 
 ```json
@@ -236,9 +265,45 @@ curl http://localhost:8080/logs/stats
 
 Returns aggregate counts from the in-memory recent audit log window.
 
-## Future endpoints
+## AI review providers
 
-No AI, OCR, database, or Cloudflare Access verification endpoints are implemented in Phase 5. Those features are reserved for later phases.
+AI review is disabled by default. Provider credentials are read only from configured environment variable names and are not exposed by `/config`. Normal tests use fake providers and do not require real API keys.
+
+Supported provider adapters:
+
+* `openai` uses OpenAI-compatible chat completions.
+* `deepseek` uses DeepSeek's OpenAI-compatible chat completions.
+* `qwen` uses Alibaba Cloud Model Studio's OpenAI-compatible Qwen interface.
+* `gemini` uses Google Gemini `generateContent`.
+* `claude` uses Anthropic Messages.
+* `local` is an OpenAI-compatible local endpoint placeholder, defaulting to `http://127.0.0.1:11434/v1`.
+
+Relevant config:
+
+```yaml
+ai:
+  enabled: false
+  default_action: review
+  hard_block_enabled: false
+  provider: openai
+  timeout_ms: 8000
+  max_retries: 2
+  retry_backoff_ms: 250
+  circuit_breaker_failure_threshold: 5
+  circuit_breaker_cooldown_ms: 30000
+  max_excerpt_runes: 2000
+  cache:
+    enabled: true
+    ttl_seconds: 3600
+  cost_tracking:
+    enabled: true
+  audit_logs:
+    enabled: true
+    store_prompts: false
+    store_raw_response: false
+```
+
+Prompt templates are configured as static config strings under `ai.prompt`; API requests cannot select arbitrary prompt template files. Cache keys are SHA-256 hashes over provider, model, template version/hash, text excerpt hash, rule-hit context, and relevant AI config. Full prompt/raw provider response logging is off by default.
 
 ## Phase 6 access control and error behavior
 
@@ -343,6 +408,7 @@ SQLite migrations create `schema_migrations`, `audit_logs`, `rule_hits`, `rule_c
 Queryable storage endpoints include:
 
 * `GET /storage/audit_logs?limit=50&offset=0`
+* `GET /storage/ai_audit_logs?limit=50&offset=0`
 * `GET /storage/import_batches?limit=50&offset=0`
 * `GET /storage/rule_changes?limit=50&offset=0`
 * `GET /storage/admin_operations?limit=50&offset=0`

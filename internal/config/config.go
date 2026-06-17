@@ -15,6 +15,7 @@ type Config struct {
 	Importer         ImporterConfig         `yaml:"importer" json:"importer"`
 	Storage          StorageConfig          `yaml:"storage" json:"storage"`
 	Limits           LimitsConfig           `yaml:"limits" json:"limits"`
+	AI               AIConfig               `yaml:"ai" json:"ai"`
 	UnsafeProduction bool                   `yaml:"-" json:"unsafe_production"`
 }
 type AppConfig struct {
@@ -114,6 +115,58 @@ type LimitsConfig struct {
 	MaxBatchItems int   `yaml:"max_batch_items" json:"max_batch_items"`
 	MaxHits       int   `yaml:"max_hits" json:"max_hits"`
 	MaxBodyBytes  int64 `yaml:"max_body_bytes" json:"max_body_bytes"`
+}
+
+type AIConfig struct {
+	Enabled                        bool              `yaml:"enabled" json:"enabled"`
+	DefaultAction                  string            `yaml:"default_action" json:"default_action"`
+	HardBlockEnabled               bool              `yaml:"hard_block_enabled" json:"hard_block_enabled"`
+	Provider                       string            `yaml:"provider" json:"provider"`
+	Model                          string            `yaml:"model" json:"model"`
+	TimeoutMS                      int               `yaml:"timeout_ms" json:"timeout_ms"`
+	MaxRetries                     int               `yaml:"max_retries" json:"max_retries"`
+	RetryBackoffMS                 int               `yaml:"retry_backoff_ms" json:"retry_backoff_ms"`
+	CircuitBreakerFailureThreshold int               `yaml:"circuit_breaker_failure_threshold" json:"circuit_breaker_failure_threshold"`
+	CircuitBreakerCooldownMS       int               `yaml:"circuit_breaker_cooldown_ms" json:"circuit_breaker_cooldown_ms"`
+	MaxExcerptRunes                int               `yaml:"max_excerpt_runes" json:"max_excerpt_runes"`
+	Cache                          AICacheConfig     `yaml:"cache" json:"cache"`
+	CostTracking                   AICostConfig      `yaml:"cost_tracking" json:"cost_tracking"`
+	AuditLogs                      AIAuditLogConfig  `yaml:"audit_logs" json:"audit_logs"`
+	Prompt                         AIPromptConfig    `yaml:"prompt" json:"prompt"`
+	Providers                      AIProvidersConfig `yaml:"providers" json:"providers"`
+}
+type AICacheConfig struct {
+	Enabled    bool `yaml:"enabled" json:"enabled"`
+	TTLSeconds int  `yaml:"ttl_seconds" json:"ttl_seconds"`
+}
+type AICostConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+}
+type AIAuditLogConfig struct {
+	Enabled          bool `yaml:"enabled" json:"enabled"`
+	StorePrompts     bool `yaml:"store_prompts" json:"store_prompts"`
+	StoreRawResponse bool `yaml:"store_raw_response" json:"store_raw_response"`
+}
+type AIPromptConfig struct {
+	Version        string `yaml:"version" json:"version"`
+	SystemTemplate string `yaml:"system_template" json:"system_template,omitempty"`
+	UserTemplate   string `yaml:"user_template" json:"user_template,omitempty"`
+}
+type AIProvidersConfig struct {
+	OpenAI   AIProviderConfig `yaml:"openai" json:"openai"`
+	DeepSeek AIProviderConfig `yaml:"deepseek" json:"deepseek"`
+	Qwen     AIProviderConfig `yaml:"qwen" json:"qwen"`
+	Gemini   AIProviderConfig `yaml:"gemini" json:"gemini"`
+	Claude   AIProviderConfig `yaml:"claude" json:"claude"`
+	Local    AIProviderConfig `yaml:"local" json:"local"`
+}
+type AIProviderConfig struct {
+	Enabled         bool    `yaml:"enabled" json:"enabled"`
+	APIKeyEnv       string  `yaml:"api_key_env" json:"api_key_env,omitempty"`
+	BaseURL         string  `yaml:"base_url" json:"base_url,omitempty"`
+	Model           string  `yaml:"model" json:"model,omitempty"`
+	InputCostPer1K  float64 `yaml:"input_cost_per_1k" json:"input_cost_per_1k,omitempty"`
+	OutputCostPer1K float64 `yaml:"output_cost_per_1k" json:"output_cost_per_1k,omitempty"`
 }
 
 func (c Config) Sanitized() Config {

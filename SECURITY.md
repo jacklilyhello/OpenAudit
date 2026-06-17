@@ -85,6 +85,7 @@ SQLite migrations create `schema_migrations`, `audit_logs`, `rule_hits`, `rule_c
 Queryable storage endpoints include:
 
 * `GET /storage/audit_logs?limit=50&offset=0`
+* `GET /storage/ai_audit_logs?limit=50&offset=0`
 * `GET /storage/import_batches?limit=50&offset=0`
 * `GET /storage/rule_changes?limit=50&offset=0`
 * `GET /storage/admin_operations?limit=50&offset=0`
@@ -120,3 +121,11 @@ False-positive controls are built into rule validation and matcher generation. K
 Resource safety invariant: variant expansion is bounded per rule and uses phrase-level pinyin mappings before character-level polyphonic expansion. Homophone variants come from compact local groups or authored YAML mapping rules. SQLite stores compact hit metadata through existing `metadata_json` fields with parameterized SQL; no new request-controlled SQL or filesystem sink is introduced.
 
 Scanner policy remains: fix real findings, document custom sanitizer invariants, and do not damage the architecture for CodeQL zero findings. Expected manual-review invariant for variant code is that runtime variant data is compiled into the binary or authored as normal safepath-loaded YAML rules under the rule root; API requests can enable/disable pinyin and homophone matching but cannot select filesystem dictionary paths.
+
+## Phase 14 AI provider safety
+
+AI review is disabled by default and remains an auxiliary metadata layer. The deterministic rule engine runs first and keeps the authoritative top-level `action`, `matched`, `risk_score`, and hits. Provider failures, timeouts, and circuit-open states are reported in `ai_review` and do not break normal audit flow. AI provider output is normalized so AI-only `block` defaults to `block_recommended`; hard-block behavior requires explicit operator opt-in with `ai.hard_block_enabled`.
+
+Provider credentials are read from environment variables named by config, never from API requests, and are not returned by `/config`. Disabled or unconfigured providers do not block startup. Requests use bounded text excerpts, per-request timeouts, bounded retries, transient-only retry behavior, and circuit breaker state. Prompt templates are static config strings; API requests cannot load arbitrary template files. AI cache keys use hashes of relevant inputs and do not use raw text as the key.
+
+SQLite `ai_audit_logs` records compact metadata by default: request ID, provider, model, status, action/recommendation, confidence, risk level, category, latency, token usage, estimated cost, cache hit, error class, and metadata JSON. Full prompts and raw provider responses are not stored unless explicitly enabled in config. Scanner policy for Phase 14 remains: fix real issues, document precise invariants for false positives, and avoid broad suppressions or architecture damage for scanner-only zero findings.

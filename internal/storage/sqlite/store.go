@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openaudit/openaudit/internal/ai"
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/safepath"
 	"github.com/openaudit/openaudit/internal/storage"
@@ -299,6 +300,41 @@ func boolInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+func (s *Store) InsertAIReviewLog(ctx context.Context, a ai.AuditLog) error {
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO ai_audit_logs (request_id,created_at,provider,model,status,action,confidence,risk_level,category,latency_ms,prompt_tokens,completion_tokens,total_tokens,estimated_cost,cache_hit,error_class,metadata_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, a.RequestID, ts(a.CreatedAt), a.Provider, a.Model, a.Status, a.Action, a.Confidence, a.RiskLevel, a.Category, a.LatencyMS, a.PromptTokens, a.CompletionTokens, a.TotalTokens, a.EstimatedCost, boolInt(a.CacheHit), a.ErrorClass, a.MetadataJSON)
+	return err
+}
+func (s *Store) QueryAIReviewLogs(ctx context.Context, limit, offset int) ([]ai.AuditLog, storage.Page, error) {
+	limit, offset = storage.NormalizeLimitOffset(limit, offset)
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM ai_audit_logs").Scan(&total); err != nil {
+		return nil, storage.Page{}, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT request_id,created_at,provider,model,status,action,confidence,risk_level,category,latency_ms,prompt_tokens,completion_tokens,total_tokens,estimated_cost,cache_hit,error_class,metadata_json FROM ai_audit_logs ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, storage.Page{}, err
+	}
+	defer rows.Close()
+	var out []ai.AuditLog
+	for rows.Next() {
+		var item ai.AuditLog
+		var created string
+		var cacheHit int
+		if err := rows.Scan(&item.RequestID, &created, &item.Provider, &item.Model, &item.Status, &item.Action, &item.Confidence, &item.RiskLevel, &item.Category, &item.LatencyMS, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens, &item.EstimatedCost, &cacheHit, &item.ErrorClass, &item.MetadataJSON); err != nil {
+			return nil, storage.Page{}, err
+		}
+		item.CreatedAt = parseTS(created)
+		item.CacheHit = cacheHit == 1
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, storage.Page{}, err
+	}
+	return out, page(total, limit, offset), nil
 }
 func (s *Store) InsertImportBatch(ctx context.Context, b storage.ImportBatch) error {
 	if b.CreatedAt.IsZero() {

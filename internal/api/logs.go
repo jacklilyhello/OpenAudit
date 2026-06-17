@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/openaudit/openaudit/internal/ai"
 	"github.com/openaudit/openaudit/internal/logstore"
 	"github.com/openaudit/openaudit/internal/storage"
 	"strconv"
@@ -51,6 +53,18 @@ func entryHasCat(e logstore.Entry, cat string) bool {
 func RegisterStorageExports(r gin.IRouter, st storage.Store) {
 	if st == nil {
 		return
+	}
+	if aiLogs, ok := st.(interface {
+		QueryAIReviewLogs(context.Context, int, int) ([]ai.AuditLog, storage.Page, error)
+	}); ok {
+		r.GET("/storage/ai_audit_logs", func(c *gin.Context) {
+			pg, page, err := aiLogs.QueryAIReviewLogs(c.Request.Context(), atoi(c.Request.URL.Query().Get("limit"), 50), atoi(c.Request.URL.Query().Get("offset"), 0))
+			if err != nil {
+				writeError(c, 500, "storage_error", err.Error(), nil)
+				return
+			}
+			c.JSON(200, gin.H{"items": pg, "count": page.Total, "limit": page.Limit, "offset": page.Offset, "has_more": page.HasMore})
+		})
 	}
 	r.GET("/storage/audit_logs", func(c *gin.Context) {
 		lim, off := atoi(c.Request.URL.Query().Get("limit"), 50), atoi(c.Request.URL.Query().Get("offset"), 0)

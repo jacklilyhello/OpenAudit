@@ -2,7 +2,7 @@
 
 OpenAudit is an open-source content moderation and risk audit engine for policy-based content review, anti-spam, anti-fraud, compliance testing, and safety research.
 
-It provides a local Go service with YAML rules, keyword/regex/domain/pinyin/homophone matching, normalization, risk scoring, API key middleware, audit logs, rule management APIs, an admin dashboard, CI checks, security scanning workflows, Docker support, and release build foundations.
+It provides a local Go service with YAML rules, keyword/regex/domain/pinyin/homophone matching, normalization, risk scoring, API key middleware, audit logs, auxiliary AI review providers, rule management APIs, an admin dashboard, CI checks, security scanning workflows, Docker support, and release build foundations.
 
 ## Quick start
 
@@ -151,6 +151,7 @@ SQLite migrations create `schema_migrations`, `audit_logs`, `rule_hits`, `rule_c
 Queryable storage endpoints include:
 
 * `GET /storage/audit_logs?limit=50&offset=0`
+* `GET /storage/ai_audit_logs?limit=50&offset=0`
 * `GET /storage/import_batches?limit=50&offset=0`
 * `GET /storage/rule_changes?limit=50&offset=0`
 * `GET /storage/admin_operations?limit=50&offset=0`
@@ -162,6 +163,14 @@ Queryable storage endpoints include:
 Pagination parameters are validated and capped. SQL filters use parameterized arguments, and export targets are selected from fixed route values rather than request-controlled SQL identifiers. CSV output is generated through Go's `encoding/csv` package.
 
 Legacy JSONL files remain compatible for audit logs, rule history, and import batch history. Phase 10 mirrors new writes into SQLite where practical but does not remove JSONL files and does not move YAML rules into the database.
+
+## Phase 14 AI review providers
+
+AI review is an optional auxiliary layer. It is disabled by default, the deterministic rule engine runs first, and top-level audit decisions do not depend on provider success. AI metadata is returned as `ai_review` when enabled; unavailable providers, timeouts, circuit-open states, and provider errors are reported there without failing the normal audit response.
+
+Provider adapters are modular and environment-keyed: OpenAI, DeepSeek, Qwen, Gemini, Claude, and an OpenAI-compatible local endpoint placeholder. Normal tests use fake providers and never require real API keys. Provider requests use bounded text excerpts, per-request timeouts, bounded retries, and a simple circuit breaker. AI cache keys are deterministic hashes of provider/model, prompt template version, text excerpt hash, rule context, and relevant config; raw text is not used as the key.
+
+By default AI can recommend `review`, `allow`, `warn`, or `block_recommended`. AI hard-block behavior is intentionally not enabled by default; `ai.hard_block_enabled` must be explicitly opted into before a provider action of `block` is preserved as a hard block recommendation. Prompt/raw response logging is disabled by default, and SQLite AI audit logs store compact metadata such as provider, model, status, recommendation, token usage, estimated cost, latency, cache hit, and error class.
 
 Scanner policy: fix real gosec findings where practical. CodeQL may still require manual review for custom safepath sanitizer flows around database/export paths; the invariant is that database paths are relative names resolved beneath a safepath-validated storage root, and SQL WHERE/ORDER fragments are assembled only from fixed code constants with request values passed as parameters. Run gosec locally with:
 

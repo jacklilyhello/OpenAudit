@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openaudit/openaudit/internal/admin"
+	"github.com/openaudit/openaudit/internal/ai"
 	"github.com/openaudit/openaudit/internal/api"
 	"github.com/openaudit/openaudit/internal/config"
 	"github.com/openaudit/openaudit/internal/engine"
@@ -63,8 +64,16 @@ func main() {
 	r.Use(security.AdminGuard(cfg))
 	api.RegisterHealth(r)
 	api.RegisterOps(r, cfg)
-	api.RegisterAuditWithOptions(r, e, cfg.Limits, logs)
-	api.RegisterBatchWithOptions(r, e, cfg.Limits)
+	var aiSvc *ai.Service
+	if cfg.AI.Enabled {
+		var aiLogger ai.AuditLogger
+		if logger, ok := persistent.(ai.AuditLogger); ok {
+			aiLogger = logger
+		}
+		aiSvc = ai.NewService(cfg.AI, aiLogger)
+	}
+	api.RegisterAuditWithAI(r, e, cfg.Limits, logs, aiSvc)
+	api.RegisterBatchWithAI(r, e, cfg.Limits, aiSvc)
 	hist := api.HistoryServices{TrustedProxies: cfg.Server.TrustedProxies, Storage: persistent}
 	if cfg.RuleHistory.Enabled {
 		hist.Changes = rulehistory.New(cfg.RuleHistory.Path, cfg.RuleHistory.MaxEntries)
