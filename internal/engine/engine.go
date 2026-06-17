@@ -6,6 +6,7 @@ import (
 	"github.com/openaudit/openaudit/internal/normalizer"
 	"github.com/openaudit/openaudit/internal/risk"
 	"github.com/openaudit/openaudit/internal/rules"
+	"github.com/openaudit/openaudit/internal/variant"
 	"sort"
 	"strconv"
 	"sync"
@@ -39,6 +40,7 @@ func NewFromSet(set rules.Set) (*Engine, error) {
 	return &Engine{set: set, keyword: ms[0], regex: ms[1], domain: ms[2], pinyin: ms[3], homophone: ms[4]}, nil
 }
 func PrepareSet(set rules.Set) ([]matcher.Matcher, error) {
+	set = rules.ExpandVariantRules(set)
 	rr, err := matcher.CompileRegexRules(set.RegexRules)
 	if err != nil {
 		return nil, err
@@ -77,9 +79,7 @@ func (e *Engine) Audit(text string, normalize bool) Result {
 func (e *Engine) AuditWithOptions(text string, opt model.AuditOptions) Result {
 	e.mu.RLock()
 	ms := []matcher.Matcher{e.keyword, e.regex, e.domain}
-	if model.BoolDefault(opt.Pinyin, true) {
-		ms = append(ms, e.pinyin)
-	}
+	pinyinMatcher := e.pinyin
 	if model.BoolDefault(opt.Homophone, true) {
 		ms = append(ms, e.homophone)
 	}
@@ -95,6 +95,17 @@ func (e *Engine) AuditWithOptions(text string, opt model.AuditOptions) Result {
 	for _, m := range ms {
 		hits = append(hits, m.Match(nr.Normalized)...)
 	}
+	if model.BoolDefault(opt.Pinyin, true) {
+		pm := variant.NormalizePinyinWithMap(nr.Normalized)
+		for _, h := range pinyinMatcher.Match(pm.Text) {
+			if h.Start >= 0 && h.End > h.Start && h.End-1 < len(pm.IndexMap) {
+				h.Start = pm.IndexMap[h.Start]
+				h.End = pm.IndexMap[h.End-1] + 1
+				h.PositionApproximate = true
+			}
+			hits = append(hits, h)
+		}
+	}
 	for i := range hits {
 		s, e, ap := normalizer.MapRange(nr, hits[i].Start, hits[i].End)
 		hits[i].Start = s
@@ -102,6 +113,7 @@ func (e *Engine) AuditWithOptions(text string, opt model.AuditOptions) Result {
 		hits[i].PositionApproximate = ap
 		if !model.BoolDefault(opt.IncludeExplanations, true) {
 			hits[i].Description = ""
+			hits[i].Explanation = ""
 			hits[i].Source = ""
 			hits[i].Tags = nil
 		}

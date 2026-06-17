@@ -180,3 +180,34 @@ OpenAudit now supports a rule lifecycle around the existing YAML source of truth
 Draft and staged YAML plus release snapshots are stored under `data/.openaudit-release/`, which is constrained by `internal/safepath` and ignored by the live loader. Successful publishes create monotonic versions (`v1`, `v2`, ...), write release metadata, reload the active matcher, and persist release/lifecycle/validation rows into SQLite where configured. Whole-ruleset rollback restores a prior snapshot and creates a new rollback release.
 
 Phase 11 also adds bulk enable/disable, conflict detection, staged/draft/published hit simulation, pre-publish validation, and import batch rollback when batch metadata includes generated files. See [API.md](API.md) for endpoint details.
+
+## Phase 13 variant normalization
+
+OpenAudit now has a formal variant layer for Traditional/Simplified Chinese, pinyin, initials, and homophone detection. The implementation uses deterministic local maps and phrase overrides inspired by OpenCC behavior, but it is not a full OpenCC dictionary clone. The local tables cover common moderation terms and can be expanded later without external services or opaque binary dictionaries.
+
+Keyword matching indexes normalized Traditional/Simplified forms while preserving the original rule keyword in hit metadata. Opt-in keyword `variant` config can generate bounded pinyin and homophone mappings with caps such as `max_pinyin_variants` and `max_homophone_variants`. Pinyin matching normalizes tone marks, tone numbers, spaces, hyphens, dots, underscores, apostrophes, and zero-width characters before matching. Polyphonic characters use phrase-level readings first, then bounded character-level expansion; ambiguous readings are lower confidence through review-first scoring.
+
+Generated pinyin and homophone-only matches default to `review` unless a rule explicitly configures another action. Variant hits add `variant_type`, `source_text`, `normalized_match`, `matched_rule_name`, `risk_level`, `score`, `category`, and `explanation` fields while preserving existing response fields. SQLite stores the compact hit metadata in existing `metadata_json`; no new columns are required.
+
+Example rule:
+
+```yaml
+id: sensitive_variant_001
+type: keyword
+category: political
+risk_level: high
+action: block
+keywords: [法轮功]
+variant:
+  enabled: true
+  traditional_simplified: true
+  pinyin: true
+  pinyin_initials: true
+  homophone: true
+  min_score: 0.75
+  action: review
+  risk_level: medium
+  initial_min_length: 3
+  max_pinyin_variants: 8
+  max_homophone_variants: 16
+```

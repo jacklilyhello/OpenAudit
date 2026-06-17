@@ -810,3 +810,50 @@ Notes:
 * SQLite stores lifecycle, release, validation, rollback, and admin operation metadata where practical.
 * CodeQL clean output is not required for this phase; remaining custom sanitizer findings should be reviewed against documented invariants.
 * Gosec findings are fixed where practical and remaining findings are reported.
+
+## Commit pending
+
+Date: 2026-06-17
+
+Summary:
+
+* Implement Phase 13 full Traditional/Simplified, pinyin, and homophone variant enhancement
+* Add improved Traditional/Simplified conversion and OpenCC-compatible mapping strategy where practical
+* Add pinyin normalization, tone handling, initials support, and symbol-interference handling
+* Add bounded polyphonic-character strategy
+* Add enhanced homophone configuration and false-positive controls
+* Add variant risk scoring with risk_level, score, category, and explanation
+* Add review-first behavior for pinyin/homophone-only matches
+* Integrate variant metadata into engine/API/storage/release validation where practical
+* Preserve exact keyword/regex/domain matcher behavior
+* Preserve YAML source-of-truth and Phase 11 release workflow compatibility
+* Update API, security, deployment, importing, README, and CODEX documentation
+* Apply the Phase 13 scanner policy: fix real issues, document custom sanitizer invariants, and do not damage architecture for CodeQL zero findings
+
+Files:
+
+* internal/normalizer/...
+* internal/rules/...
+* internal/engine/...
+* internal/matcher/...
+* internal/variant/...
+* internal/rulerelease/...
+* internal/storage/...
+* web/admin/...
+* data/keywords/...
+* README.md
+* SECURITY.md
+* IMPORTING.md
+* DEPLOYMENT.md
+* API.md
+* CODEX.md
+
+Notes:
+
+* Append-only log entry for Phase 13.
+* Phase 12 benchmark work is intentionally skipped and not implemented here.
+* Existing Phase 1-11 APIs remain backward compatible.
+* YAML rule files remain the source of truth for rule content.
+* Pinyin and homophone-only generated variant matches do not hard block by default.
+* CodeQL clean output is not required for this phase; remaining custom sanitizer findings should be reviewed against documented invariants.
+* Gosec findings are fixed where practical and remaining findings are reported.

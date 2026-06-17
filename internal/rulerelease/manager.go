@@ -429,6 +429,7 @@ func DetectConflicts(rs []rules.Rule) []Conflict {
 	var out []Conflict
 	ids := map[string]int{}
 	keywordKey := map[string]string{}
+	variantKey := map[string]string{}
 	regexKey := map[string]string{}
 	domainKey := map[string]string{}
 	for i := range rs {
@@ -447,6 +448,14 @@ func DetectConflicts(rs []rules.Rule) []Conflict {
 				out = append(out, Conflict{Type: "duplicate_keyword", Severity: "warning", AffectedRuleIDs: []string{prev, r.ID}, Message: "duplicate normalized keyword in the same category", SuggestedAction: "merge duplicate keyword rules or adjust category"})
 			} else {
 				keywordKey[key] = r.ID
+			}
+			for _, v := range obviousVariantKeys(r, kw) {
+				vkey := strings.ToLower(strings.TrimSpace(r.Category)) + "\x00" + v
+				if prev, ok := variantKey[vkey]; ok && prev != r.ID {
+					out = append(out, Conflict{Type: "variant_overlap", Severity: "warning", AffectedRuleIDs: []string{prev, r.ID}, Message: "obvious variant-expanded keyword overlap in the same category", SuggestedAction: "review variant settings or merge overlapping rules"})
+				} else {
+					variantKey[vkey] = r.ID
+				}
 			}
 		}
 		for _, p := range r.Patterns {
@@ -469,6 +478,36 @@ func DetectConflicts(rs []rules.Rule) []Conflict {
 	for id, n := range ids {
 		if n > 1 {
 			out = append(out, Conflict{Type: "duplicate_rule_id", Severity: "critical", AffectedRuleIDs: []string{id}, Message: "duplicate rule id found", SuggestedAction: "rule ids must be unique before publishing"})
+		}
+	}
+	return out
+}
+
+func obviousVariantKeys(r rules.Rule, kw string) []string {
+	if r.Variant.Enabled == nil || !*r.Variant.Enabled {
+		return nil
+	}
+	keys := []string{strings.ToLower(strings.TrimSpace(kw))}
+	tmp := rules.Set{KeywordRules: []rules.Rule{r}}
+	expanded := rules.ExpandVariantRules(tmp)
+	for _, pr := range expanded.PinyinRules {
+		for _, values := range pr.Mapping {
+			keys = append(keys, values...)
+		}
+	}
+	for _, hr := range expanded.HomophoneRules {
+		for _, values := range hr.Mapping {
+			keys = append(keys, values...)
+		}
+	}
+	sort.Strings(keys)
+	out := keys[:0]
+	prev := ""
+	for _, k := range keys {
+		k = strings.ToLower(strings.TrimSpace(k))
+		if k != "" && k != prev {
+			out = append(out, k)
+			prev = k
 		}
 	}
 	return out

@@ -2,8 +2,8 @@ id: homophone_001
 type: homophone
 category: political
 risk_level: high
-action: block
-score: 85
+action: review
+score: 75
 description: Homophone variants
 source: local
 tags:

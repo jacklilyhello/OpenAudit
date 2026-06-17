@@ -1,6 +1,7 @@
 package normalizer
 
 import (
+	"github.com/openaudit/openaudit/internal/variant"
 	"strings"
 	"unicode"
 )
@@ -11,20 +12,18 @@ type Result struct {
 	IndexMap   []int  `json:"index_map"`
 }
 
-var tradToSimp = map[rune]rune{'輪': '轮', '臺': '台', '灣': '湾', '門': '门', '國': '国', '會': '会', '習': '习', '體': '体', '網': '网', '裏': '里'}
 var cjkSep = map[rune]bool{'-': true, '_': true, '*': true, '·': true, ' ': true, '\t': true}
 
 func Normalize(s string) string { return NormalizeWithMap(s).Normalized }
 func NormalizeWithMap(s string) Result {
+	raw := s
+	s = variant.Simplify(s)
 	orig := []rune(s)
 	out := []rune{}
 	idx := []int{}
 	pending := -1
 	for i, r := range orig {
 		r = fold(r)
-		if m, ok := tradToSimp[r]; ok {
-			r = m
-		}
 		if unicode.IsSpace(r) {
 			pending = i
 			continue
@@ -40,7 +39,7 @@ func NormalizeWithMap(s string) Result {
 		out = append(out, r)
 		idx = append(idx, i)
 	}
-	return Result{Original: s, Normalized: string(out), IndexMap: idx}
+	return Result{Original: raw, Normalized: string(out), IndexMap: idx}
 }
 func MapRange(n Result, start, end int) (int, int, bool) {
 	if start < 0 || end <= start || len(n.IndexMap) == 0 {
@@ -73,9 +72,6 @@ func isSeparatorBetweenCJK(orig []rune, i int, r rune) bool {
 	prev, next := rune(0), rune(0)
 	for j := i - 1; j >= 0; j-- {
 		p := fold(orig[j])
-		if m, ok := tradToSimp[p]; ok {
-			p = m
-		}
 		if cjkSep[p] || unicode.IsSpace(p) {
 			continue
 		}
@@ -84,9 +80,6 @@ func isSeparatorBetweenCJK(orig []rune, i int, r rune) bool {
 	}
 	for j := i + 1; j < len(orig); j++ {
 		n := fold(orig[j])
-		if m, ok := tradToSimp[n]; ok {
-			n = m
-		}
 		if cjkSep[n] || unicode.IsSpace(n) {
 			continue
 		}
