@@ -2,8 +2,8 @@ id: pinyin_001
 type: pinyin
 category: political
 risk_level: high
-action: block
-score: 80
+action: review
+score: 75
 description: Pinyin variants
 source: local
 tags:

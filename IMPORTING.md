@@ -151,3 +151,25 @@ $(go env GOPATH)/bin/gosec ./...
 `POST /imports/batches/:batch_id/rollback` can remove imported YAML files only when the recorded batch metadata includes generated file paths. The rollback path is safepath-constrained under the rule data root and refuses non-YAML targets. Older batches without generated file metadata return a clear rollback-unavailable error; OpenAudit does not guess which rules to delete and does not remove unrelated files.
 
 For safer release operations, import into draft/staged workflows where practical, run `POST /rules/prepublish-test`, then publish staged rules to create a ruleset version. Whole-ruleset rollback remains available through release snapshots even when an import batch itself cannot be exactly rolled back.
+
+## Phase 13 variant rule import notes
+
+Imported keyword rules may include the optional `variant` block used by normal YAML rules. Missing variant config preserves existing behavior. The importer and release workflow validate invalid action values, risk levels, score ranges, and expansion caps before activation.
+
+Prefer review-first settings for imported pinyin and homophone variants:
+
+```yaml
+variant:
+  enabled: true
+  pinyin: true
+  pinyin_initials: true
+  homophone: true
+  min_score: 0.75
+  action: review
+  risk_level: medium
+  initial_min_length: 3
+  max_pinyin_variants: 8
+  max_homophone_variants: 16
+```
+
+Phase 13 does not import external OpenCC or pinyin dictionary files. Variant data is either compiled into OpenAudit or authored as normal YAML rule content under the existing safepath-constrained rule root. Keep large/private external rulesets outside git, dry-run imports first, and simulate staged rules before publish.

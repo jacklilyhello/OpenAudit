@@ -16,10 +16,28 @@ type Rule struct {
 	Patterns    []string            `yaml:"patterns" json:"patterns,omitempty"`
 	Domains     []string            `yaml:"domains" json:"domains,omitempty"`
 	Mapping     map[string][]string `yaml:"mapping" json:"mapping,omitempty"`
+	Variant     VariantConfig       `yaml:"variant,omitempty" json:"variant,omitempty"`
 	Path        string              `yaml:"-" json:"-"`
 }
 
 func (r Rule) IsEnabled() bool { return r.Enabled == nil || *r.Enabled }
+
+type VariantConfig struct {
+	Enabled               *bool    `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	TraditionalSimplified *bool    `yaml:"traditional_simplified,omitempty" json:"traditional_simplified,omitempty"`
+	Pinyin                *bool    `yaml:"pinyin,omitempty" json:"pinyin,omitempty"`
+	PinyinInitials        *bool    `yaml:"pinyin_initials,omitempty" json:"pinyin_initials,omitempty"`
+	Homophone             *bool    `yaml:"homophone,omitempty" json:"homophone,omitempty"`
+	MinScore              float64  `yaml:"min_score,omitempty" json:"min_score,omitempty"`
+	Action                string   `yaml:"action,omitempty" json:"action,omitempty"`
+	RiskLevel             string   `yaml:"risk_level,omitempty" json:"risk_level,omitempty"`
+	Explanation           *bool    `yaml:"explanation,omitempty" json:"explanation,omitempty"`
+	MinLength             int      `yaml:"min_length,omitempty" json:"min_length,omitempty"`
+	InitialMinLength      int      `yaml:"initial_min_length,omitempty" json:"initial_min_length,omitempty"`
+	MaxPinyinVariants     int      `yaml:"max_pinyin_variants,omitempty" json:"max_pinyin_variants,omitempty"`
+	MaxHomophoneVariants  int      `yaml:"max_homophone_variants,omitempty" json:"max_homophone_variants,omitempty"`
+	CategoryConstraints   []string `yaml:"category_constraints,omitempty" json:"category_constraints,omitempty"`
+}
 
 type Set struct {
 	Rules          []Rule

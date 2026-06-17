@@ -3,9 +3,10 @@ package matcher
 import "sort"
 
 type AhoPayload struct {
-	RuleID, Type, Category, RiskLevel, Action, Match, Canonical, Variant, Description, Source string
-	Tags                                                                                      []string
-	Score                                                                                     int
+	RuleID, Type, VariantType, MatchedRuleName, Category, RiskLevel, Action, Match, NormalizedMatch string
+	Canonical, Variant, SourceText, Explanation, Description, Source                                string
+	Tags                                                                                            []string
+	Score                                                                                           int
 }
 type ahoOut struct {
 	pat     []rune

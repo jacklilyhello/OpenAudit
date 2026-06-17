@@ -18,3 +18,10 @@ func TestNormalizePreservesDomainDots(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestPhase13MixedTraditionalSimplified(t *testing.T) {
+	got := Normalize("臺灣 法輪功 头髮")
+	if got != "台湾法轮功头发" {
+		t.Fatalf("got %q", got)
+	}
+}

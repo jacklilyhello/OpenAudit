@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/openaudit/openaudit/internal/risk"
 	"github.com/openaudit/openaudit/internal/safepath"
+	"github.com/openaudit/openaudit/internal/variant"
 	"gopkg.in/yaml.v3"
 	"io/fs"
 	"path/filepath"
@@ -69,6 +70,8 @@ func NormalizeAndValidate(r *Rule) error {
 	r.Type = strings.ToLower(strings.TrimSpace(r.Type))
 	r.RiskLevel = strings.ToLower(strings.TrimSpace(r.RiskLevel))
 	r.Action = strings.ToLower(strings.TrimSpace(r.Action))
+	r.Variant.Action = strings.ToLower(strings.TrimSpace(r.Variant.Action))
+	r.Variant.RiskLevel = strings.ToLower(strings.TrimSpace(r.Variant.RiskLevel))
 	if r.ID == "" {
 		return fmt.Errorf("invalid rule in %s: id is required", r.Path)
 	}
@@ -105,6 +108,10 @@ func NormalizeAndValidate(r *Rule) error {
 	r.Keywords = clean(r.Keywords)
 	r.Patterns = clean(r.Patterns)
 	r.Domains = clean(r.Domains)
+	r.Variant.CategoryConstraints = clean(r.Variant.CategoryConstraints)
+	if err := validateVariantConfig(r); err != nil {
+		return err
+	}
 	switch r.Type {
 	case "keyword":
 		if len(r.Keywords) == 0 {
@@ -131,4 +138,55 @@ func NormalizeAndValidate(r *Rule) error {
 		return fmt.Errorf("invalid rule %s: unknown rule type %q", r.ID, r.Type)
 	}
 	return nil
+}
+
+func validateVariantConfig(r *Rule) error {
+	v := r.Variant
+	if v.MinScore < 0 || v.MinScore > 1 {
+		return fmt.Errorf("invalid rule %s: variant.min_score must be between 0 and 1", r.ID)
+	}
+	if v.MinLength < 0 || v.InitialMinLength < 0 || v.MaxPinyinVariants < 0 || v.MaxHomophoneVariants < 0 {
+		return fmt.Errorf("invalid rule %s: variant limits must not be negative", r.ID)
+	}
+	if v.MaxPinyinVariants > 64 {
+		return fmt.Errorf("invalid rule %s: variant.max_pinyin_variants must be <= 64", r.ID)
+	}
+	if v.MaxHomophoneVariants > 128 {
+		return fmt.Errorf("invalid rule %s: variant.max_homophone_variants must be <= 128", r.ID)
+	}
+	if v.Action != "" && !validAction(v.Action) {
+		return fmt.Errorf("invalid rule %s: variant.action %q is invalid", r.ID, v.Action)
+	}
+	if v.RiskLevel != "" && !validRisk(v.RiskLevel) {
+		return fmt.Errorf("invalid rule %s: variant.risk_level %q is invalid", r.ID, v.RiskLevel)
+	}
+	if (boolValue(v.Pinyin) || boolValue(v.PinyinInitials)) && v.MaxPinyinVariants == 0 {
+		r.Variant.MaxPinyinVariants = variant.DefaultMaxPinyinVariants
+	}
+	if boolValue(v.Homophone) && v.MaxHomophoneVariants == 0 {
+		r.Variant.MaxHomophoneVariants = variant.DefaultMaxHomophoneVariants
+	}
+	return nil
+}
+
+func validAction(a string) bool {
+	switch a {
+	case "block", "review", "warn", "allow_with_flag", "pass":
+		return true
+	default:
+		return false
+	}
+}
+
+func validRisk(r string) bool {
+	switch r {
+	case "low", "medium", "high", "critical":
+		return true
+	default:
+		return false
+	}
+}
+
+func boolValue(p *bool) bool {
+	return p != nil && *p
 }

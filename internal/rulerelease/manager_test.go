@@ -138,3 +138,18 @@ func TestConflictsBulkAndImportRollback(t *testing.T) {
 		t.Fatalf("unrelated rule removed: %v", err)
 	}
 }
+
+func TestVariantOverlapConflictWarning(t *testing.T) {
+	yes := true
+	rs := []rules.Rule{
+		{ID: "a", Type: "keyword", Category: "c", Keywords: []string{"法轮功"}, Variant: rules.VariantConfig{Enabled: &yes, Pinyin: &yes}},
+		{ID: "b", Type: "keyword", Category: "c", Keywords: []string{"法輪功"}, Variant: rules.VariantConfig{Enabled: &yes, Pinyin: &yes}},
+	}
+	conflicts := DetectConflicts(rs)
+	for _, c := range conflicts {
+		if c.Type == "variant_overlap" {
+			return
+		}
+	}
+	t.Fatalf("expected variant overlap conflict, got %#v", conflicts)
+}

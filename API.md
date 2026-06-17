@@ -78,6 +78,32 @@ curl -X POST http://localhost:8080/audit/text \
 
 Response includes `matched`, `risk_score`, `action`, `hits`, and optional normalized text/risk detail fields.
 
+Variant-capable hits preserve the existing fields and may include additional metadata:
+
+```json
+{
+  "type": "pinyin",
+  "variant_type": "pinyin",
+  "rule_id": "sensitive_variant_001",
+  "matched_rule_name": "Variant rule",
+  "category": "political",
+  "risk_level": "medium",
+  "action": "review",
+  "match": "falungong",
+  "normalized_match": "falungong",
+  "source_text": "法轮功",
+  "canonical": "法轮功",
+  "variant": "falungong",
+  "start": 0,
+  "end": 11,
+  "position_approximate": true,
+  "score": 75,
+  "explanation": "Pinyin variant matched \"falungong\" for canonical text \"法轮功\"; tone and separator differences are normalized. Risk is medium and action is review to control false positives."
+}
+```
+
+Generated pinyin, initials, and homophone-only matches are intended for review-first workflows and default to `review` when enabled through keyword `variant` config. Exact keyword, regex, and domain rules keep their authored action.
+
 ### POST `/audit/batch`
 
 ```bash
@@ -128,6 +154,32 @@ List rules with filters: `type`, `category`, `risk_level`, `action`, `source`, `
 
 ```bash
 curl 'http://localhost:8080/rules?type=keyword&limit=50&offset=0'
+```
+
+Rule-level variant config is optional. Missing config preserves existing rule behavior. Invalid actions, risk levels, score ranges, and expansion caps are rejected by rule validation and pre-publish validation.
+
+```json
+{
+  "id": "sensitive_variant_001",
+  "type": "keyword",
+  "category": "political",
+  "risk_level": "high",
+  "action": "block",
+  "keywords": ["法轮功"],
+  "variant": {
+    "enabled": true,
+    "traditional_simplified": true,
+    "pinyin": true,
+    "pinyin_initials": true,
+    "homophone": true,
+    "min_score": 0.75,
+    "action": "review",
+    "risk_level": "medium",
+    "initial_min_length": 3,
+    "max_pinyin_variants": 8,
+    "max_homophone_variants": 16
+  }
+}
 ```
 
 ### GET `/rules/:id`

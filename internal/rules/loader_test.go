@@ -23,3 +23,22 @@ func TestValidateMapping(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidateVariantConfig(t *testing.T) {
+	yes := true
+	r := Rule{ID: "v", Type: "keyword", Category: "c", Keywords: []string{"法轮功"}, Variant: VariantConfig{Enabled: &yes, Pinyin: &yes, PinyinInitials: &yes, Homophone: &yes, MinScore: 0.72, Action: "review", RiskLevel: "medium", InitialMinLength: 3, MaxPinyinVariants: 4, MaxHomophoneVariants: 4}}
+	if err := NormalizeAndValidate(&r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Variant.Action != "review" || r.Variant.RiskLevel != "medium" {
+		t.Fatalf("variant config not normalized: %#v", r.Variant)
+	}
+}
+
+func TestInvalidVariantConfigRejected(t *testing.T) {
+	yes := true
+	r := Rule{ID: "v", Type: "keyword", Category: "c", Keywords: []string{"法轮功"}, Variant: VariantConfig{Enabled: &yes, Pinyin: &yes, MinScore: 1.2}}
+	if err := NormalizeAndValidate(&r); err == nil {
+		t.Fatal("expected invalid min_score error")
+	}
+}

@@ -150,3 +150,20 @@ $(go env GOPATH)/bin/gosec ./...
 Back up `data/` and `storage/` together. Phase 11 stores draft/staged rule YAML, ruleset snapshots, and JSON release metadata under `data/.openaudit-release/`; SQLite mirrors lifecycle, release, validation, and admin metadata when the SQLite backend is available. Losing the hidden release directory does not stop live audits, but it removes ruleset rollback targets and draft/staged work.
 
 Before production publishes, use `POST /rules/prepublish-test` and `POST /rules/simulate` against staged rules. Use `GET /rules/releases` to verify version records after publish. Whole-ruleset rollback should be treated as an administrative operation and performed only from trusted admin networks or Cloudflare Access-protected sessions.
+
+## Phase 13 variant operations
+
+Variant detection is local and deterministic. Traditional/Simplified conversion uses compact phrase and character maps; pinyin and homophone support uses bounded local tables plus authored YAML mapping rules. No external service, remote dictionary, PostgreSQL, MySQL, Redis, AI, OCR, or benchmark service is required.
+
+For production rules, enable pinyin and homophone variants gradually and prefer `variant.action: review`. Use `POST /rules/simulate` and `POST /rules/prepublish-test` before publish; simulation responses include variant type, score, risk level, category, and explanation fields. Expansion caps are validated by rule loading, and generated pinyin/homophone-only matches are review-first by default.
+
+Local scanner validation remains:
+
+```sh
+go fmt ./...
+go test ./...
+go vet ./...
+$(go env GOPATH)/bin/gosec ./...
+```
+
+CodeQL may require manual review for custom safepath and variant-sanitizer flows. The variant invariant is that runtime variant data is compiled in or loaded as ordinary YAML rules through the existing safepath-constrained rule root; API requests cannot choose dictionary files.
