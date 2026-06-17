@@ -227,6 +227,75 @@ type RuleValidationRun struct {
 	MetadataJSON   string    `json:"metadata_json,omitempty"`
 }
 
+type ReviewCase struct {
+	ID                    int64     `json:"id,omitempty"`
+	CaseID                string    `json:"case_id"`
+	AuditID               string    `json:"audit_id,omitempty"`
+	Source                string    `json:"source"`
+	Status                string    `json:"status"`
+	Priority              string    `json:"priority"`
+	DeterministicDecision string    `json:"deterministic_decision,omitempty"`
+	TemporaryAction       string    `json:"temporary_action"`
+	AIScore               float64   `json:"ai_score,omitempty"`
+	AIRiskLevel           string    `json:"ai_risk_level,omitempty"`
+	AIRecommendation      string    `json:"ai_recommendation,omitempty"`
+	VariantScore          float64   `json:"variant_score,omitempty"`
+	VariantRiskLevel      string    `json:"variant_risk_level,omitempty"`
+	Category              string    `json:"category,omitempty"`
+	ContentExcerpt        string    `json:"content_excerpt,omitempty"`
+	ContentHash           string    `json:"content_hash,omitempty"`
+	ContextHash           string    `json:"context_hash,omitempty"`
+	MatchedRulesJSON      string    `json:"matched_rules_json,omitempty"`
+	AIReviewJSON          string    `json:"ai_review_json,omitempty"`
+	VariantReviewJSON     string    `json:"variant_review_json,omitempty"`
+	DecisionJSON          string    `json:"decision_json,omitempty"`
+	MetadataJSON          string    `json:"metadata_json,omitempty"`
+	Reviewer              string    `json:"reviewer,omitempty"`
+	OperatorNote          string    `json:"operator_note,omitempty"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	DecidedAt             time.Time `json:"decided_at,omitempty"`
+	ExpiresAt             time.Time `json:"expires_at,omitempty"`
+}
+type ReviewCaseEvent struct {
+	ID             int64     `json:"id,omitempty"`
+	CaseID         string    `json:"case_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	Actor          string    `json:"actor,omitempty"`
+	Action         string    `json:"action"`
+	PreviousStatus string    `json:"previous_status,omitempty"`
+	NewStatus      string    `json:"new_status,omitempty"`
+	Note           string    `json:"note,omitempty"`
+	MetadataJSON   string    `json:"metadata_json,omitempty"`
+}
+type ReviewPolicyRecord struct {
+	PolicyJSON string    `json:"policy_json"`
+	Version    string    `json:"version"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	Actor      string    `json:"actor,omitempty"`
+}
+type ReviewFilter struct {
+	Status, Priority, Category, Source, TemporaryAction, AIRiskLevel, VariantRiskLevel string
+	MinScore, MaxScore                                                                 float64
+	HasMinScore, HasMaxScore                                                           bool
+	CreatedFrom, CreatedTo                                                             time.Time
+	Sort, Direction                                                                    string
+	Limit, Offset                                                                      int
+}
+type ReviewPage struct {
+	Items []ReviewCase `json:"items"`
+	Page  Page         `json:"page"`
+}
+type ReviewStats struct {
+	Pending          int     `json:"pending"`
+	CriticalPending  int     `json:"critical_pending"`
+	TemporaryBlocked int     `json:"temporary_blocked"`
+	TemporaryAllowed int     `json:"temporary_allowed"`
+	ReviewedToday    int     `json:"reviewed_today"`
+	AverageAgeHours  float64 `json:"average_age_hours"`
+	Total            int     `json:"total"`
+}
+
 type Store interface {
 	Close() error
 	InsertAuditLog(context.Context, AuditLog, []engine.Hit) (int64, error)
@@ -244,4 +313,12 @@ type Store interface {
 	QueryRuleReleases(context.Context, ReleaseFilter) (ReleasePage, error)
 	GetRuleRelease(context.Context, string) (RuleRelease, []RuleReleaseItem, bool, error)
 	InsertRuleValidationRun(context.Context, RuleValidationRun) error
+	UpsertReviewPolicy(context.Context, ReviewPolicyRecord) error
+	GetReviewPolicy(context.Context) (ReviewPolicyRecord, bool, error)
+	CreateReviewCase(context.Context, ReviewCase, ReviewCaseEvent) (ReviewCase, bool, error)
+	QueryReviewCases(context.Context, ReviewFilter) (ReviewPage, error)
+	GetReviewCase(context.Context, string) (ReviewCase, []ReviewCaseEvent, bool, error)
+	DecideReviewCase(context.Context, string, string, string, string, string) (ReviewCase, error)
+	BulkDecideReviewCases(context.Context, []string, string, string, string) ([]ReviewCase, error)
+	ReviewStats(context.Context) (ReviewStats, error)
 }

@@ -160,6 +160,7 @@ func fill(c *Config) {
 	if c.AI.Cache.TTLSeconds == 0 {
 		c.AI.Cache.TTLSeconds = d.AI.Cache.TTLSeconds
 	}
+	fillReviewPolicy(&c.ReviewPolicy, d.ReviewPolicy)
 	fillAIProvider(&c.AI.Providers.OpenAI, d.AI.Providers.OpenAI)
 	fillAIProvider(&c.AI.Providers.DeepSeek, d.AI.Providers.DeepSeek)
 	fillAIProvider(&c.AI.Providers.Qwen, d.AI.Providers.Qwen)
@@ -188,6 +189,32 @@ func fillAIProvider(p *AIProviderConfig, d AIProviderConfig) {
 		p.Model = d.Model
 	}
 }
+func fillReviewPolicy(p *ReviewPolicyConfig, d ReviewPolicyConfig) {
+	if p.AIScoreReviewThreshold == 0 {
+		p.AIScoreReviewThreshold = d.AIScoreReviewThreshold
+	}
+	if p.AIScoreTemporaryBlockThreshold == 0 {
+		p.AIScoreTemporaryBlockThreshold = d.AIScoreTemporaryBlockThreshold
+	}
+	if p.AIScoreLogOnlyBelow == 0 {
+		p.AIScoreLogOnlyBelow = d.AIScoreLogOnlyBelow
+	}
+	if p.VariantScoreReviewThreshold == 0 {
+		p.VariantScoreReviewThreshold = d.VariantScoreReviewThreshold
+	}
+	if p.UncertainDefaultAction == "" {
+		p.UncertainDefaultAction = d.UncertainDefaultAction
+	}
+	if p.RetentionDays == 0 {
+		p.RetentionDays = d.RetentionDays
+	}
+	if p.ContentExcerptMaxBytes == 0 {
+		p.ContentExcerptMaxBytes = d.ContentExcerptMaxBytes
+	}
+	if p.MaxExportRows == 0 {
+		p.MaxExportRows = d.MaxExportRows
+	}
+}
 func Validate(c Config) error {
 	env := c.App.Env
 	if env != "development" && env != "production" && env != "test" {
@@ -200,6 +227,9 @@ func Validate(c Config) error {
 		return fmt.Errorf("invalid storage.backend %q: must be sqlite, jsonl, or memory", c.Storage.Backend)
 	}
 	if err := validateAI(c.AI); err != nil {
+		return err
+	}
+	if err := ValidateReviewPolicy(c.ReviewPolicy); err != nil {
 		return err
 	}
 	if strings.ContainsRune(c.Storage.SQLitePath, '\x00') || strings.Contains(c.Storage.SQLitePath, "..") || filepath.IsAbs(c.Storage.SQLitePath) {
@@ -225,6 +255,28 @@ func Validate(c Config) error {
 	}
 	if c.Admin.Enabled && !c.Admin.RequireCloudflareAccess && !safeCIDRs(c.Admin.AllowedCIDRs) && !c.UnsafeProduction {
 		return errors.New("production admin requires Cloudflare Access or narrow allowed_cidrs unless OPENAUDIT_ALLOW_UNSAFE_PRODUCTION=true")
+	}
+	return nil
+}
+func ValidateReviewPolicy(p ReviewPolicyConfig) error {
+	for name, v := range map[string]float64{
+		"review_policy.ai_score_review_threshold":          p.AIScoreReviewThreshold,
+		"review_policy.ai_score_temporary_block_threshold": p.AIScoreTemporaryBlockThreshold,
+		"review_policy.ai_score_log_only_below":            p.AIScoreLogOnlyBelow,
+		"review_policy.variant_score_review_threshold":     p.VariantScoreReviewThreshold,
+	} {
+		if v < 0 || v > 1 {
+			return fmt.Errorf("%s must be between 0 and 1", name)
+		}
+	}
+	if p.AIScoreTemporaryBlockThreshold < p.AIScoreReviewThreshold {
+		return errors.New("review_policy.ai_score_temporary_block_threshold must be greater than or equal to ai_score_review_threshold")
+	}
+	if !has([]string{"temporary_allow", "temporary_block", "review_only", "log_only"}, p.UncertainDefaultAction) {
+		return fmt.Errorf("invalid review_policy.uncertain_default_action %q", p.UncertainDefaultAction)
+	}
+	if p.RetentionDays < 0 || p.ContentExcerptMaxBytes < 0 || p.MaxExportRows < 0 {
+		return errors.New("review_policy retention, excerpt, and export limits must be non-negative")
 	}
 	return nil
 }

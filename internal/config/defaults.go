@@ -52,6 +52,23 @@ func Defaults() Config {
 		},
 		Limits: LimitsConfig{MaxTextRunes: 10000, MaxBatchItems: 100, MaxHits: 100, MaxBodyBytes: 1048576},
 		AI:     defaultAIConfig(),
+		ReviewPolicy: ReviewPolicyConfig{
+			Enabled:                             true,
+			AIReviewEnabled:                     true,
+			VariantReviewEnabled:                true,
+			AIScoreReviewThreshold:              0.70,
+			AIScoreTemporaryBlockThreshold:      0.90,
+			AIScoreLogOnlyBelow:                 0.40,
+			VariantScoreReviewThreshold:         0.70,
+			UncertainDefaultAction:              "temporary_allow",
+			AllowAIHardBlock:                    false,
+			RequireHumanReviewForAIOnlyMatches:  true,
+			RequireHumanReviewForHomophoneMatch: true,
+			RequireHumanReviewForPinyinMatches:  true,
+			RetentionDays:                       30,
+			ContentExcerptMaxBytes:              2048,
+			MaxExportRows:                       10000,
+		},
 	}
 }
 

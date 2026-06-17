@@ -167,3 +167,35 @@ $(go env GOPATH)/bin/gosec ./...
 ```
 
 CodeQL may require manual review for custom safepath and variant-sanitizer flows. The variant invariant is that runtime variant data is compiled in or loaded as ordinary YAML rules through the existing safepath-constrained rule root; API requests cannot choose dictionary files.
+
+## Phase 15 review queue operations
+
+The internal review queue uses the SQLite backend when available. Back up `storage/data/openaudit.db` with other operational state if review cases, operator decisions, review policy versions, and admin operation logs matter for auditability. The queue is not a customer support system and should not be connected to user messaging, appeals, replies, or feedback flows.
+
+Production deployments should treat `/review/*` the same way as `/admin`: keep it behind private networks, Cloudflare Tunnel/Access, or a trusted reverse proxy, and require production API key protection for management APIs. Do not expose review queue routes directly to the public internet.
+
+Review policy controls uncertain AI and variant routing:
+
+```yaml
+review_policy:
+  uncertain_default_action: temporary_allow
+  allow_ai_hard_block: false
+  content_excerpt_max_bytes: 2048
+  retention_days: 30
+  max_export_rows: 10000
+```
+
+The queue stores capped content excerpts, hashes, compact metadata, temporary action, status, priority, and operator notes. Full raw content is not stored by default. If audit logs are configured to store request text, treat those logs as more sensitive than review cases and protect backups accordingly.
+
+Use `GET /review/stats` for operational monitoring and `GET /review/export?format=csv|json` for capped exports. Bulk decisions are limited and transactional; failed validation leaves cases unchanged. Retention cleanup can use `expires_at` and the `expired` status in future maintenance jobs.
+
+Local scanner validation remains:
+
+```sh
+go fmt ./...
+go test ./...
+go vet ./...
+$(go env GOPATH)/bin/gosec ./...
+```
+
+CodeQL zero findings are not required for this phase. Review SQL scanner findings against the invariant that filters and sort fields are allowlisted and request values are passed as SQL parameters; review filesystem findings against the existing safepath storage-root invariant.

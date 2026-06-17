@@ -16,6 +16,7 @@ type Config struct {
 	Storage          StorageConfig          `yaml:"storage" json:"storage"`
 	Limits           LimitsConfig           `yaml:"limits" json:"limits"`
 	AI               AIConfig               `yaml:"ai" json:"ai"`
+	ReviewPolicy     ReviewPolicyConfig     `yaml:"review_policy" json:"review_policy"`
 	UnsafeProduction bool                   `yaml:"-" json:"unsafe_production"`
 }
 type AppConfig struct {
@@ -167,6 +168,24 @@ type AIProviderConfig struct {
 	Model           string  `yaml:"model" json:"model,omitempty"`
 	InputCostPer1K  float64 `yaml:"input_cost_per_1k" json:"input_cost_per_1k,omitempty"`
 	OutputCostPer1K float64 `yaml:"output_cost_per_1k" json:"output_cost_per_1k,omitempty"`
+}
+
+type ReviewPolicyConfig struct {
+	Enabled                             bool    `yaml:"enabled" json:"enabled"`
+	AIReviewEnabled                     bool    `yaml:"ai_review_enabled" json:"ai_review_enabled"`
+	VariantReviewEnabled                bool    `yaml:"variant_review_enabled" json:"variant_review_enabled"`
+	AIScoreReviewThreshold              float64 `yaml:"ai_score_review_threshold" json:"ai_score_review_threshold"`
+	AIScoreTemporaryBlockThreshold      float64 `yaml:"ai_score_temporary_block_threshold" json:"ai_score_temporary_block_threshold"`
+	AIScoreLogOnlyBelow                 float64 `yaml:"ai_score_log_only_below" json:"ai_score_log_only_below"`
+	VariantScoreReviewThreshold         float64 `yaml:"variant_score_review_threshold" json:"variant_score_review_threshold"`
+	UncertainDefaultAction              string  `yaml:"uncertain_default_action" json:"uncertain_default_action"`
+	AllowAIHardBlock                    bool    `yaml:"allow_ai_hard_block" json:"allow_ai_hard_block"`
+	RequireHumanReviewForAIOnlyMatches  bool    `yaml:"require_human_review_for_ai_only_matches" json:"require_human_review_for_ai_only_matches"`
+	RequireHumanReviewForHomophoneMatch bool    `yaml:"require_human_review_for_homophone_matches" json:"require_human_review_for_homophone_matches"`
+	RequireHumanReviewForPinyinMatches  bool    `yaml:"require_human_review_for_pinyin_matches" json:"require_human_review_for_pinyin_matches"`
+	RetentionDays                       int     `yaml:"retention_days" json:"retention_days"`
+	ContentExcerptMaxBytes              int     `yaml:"content_excerpt_max_bytes" json:"content_excerpt_max_bytes"`
+	MaxExportRows                       int     `yaml:"max_export_rows" json:"max_export_rows"`
 }
 
 func (c Config) Sanitized() Config {

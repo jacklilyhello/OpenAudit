@@ -34,7 +34,7 @@ func APIKeyMiddleware(cfg config.Config, checker Checker) gin.MiddlewareFunc {
 	}
 }
 func isManagement(p string) bool {
-	return p == "/config" || strings.HasPrefix(p, "/logs") || strings.HasPrefix(p, "/rules/reload") || strings.HasPrefix(p, "/rules/create") || strings.HasPrefix(p, "/rules/update") || strings.HasPrefix(p, "/rules/delete") || strings.HasPrefix(p, "/rules/history") || strings.Contains(p, "/history") || strings.Contains(p, "/diff") || strings.HasPrefix(p, "/rules/rollback") || strings.HasPrefix(p, "/imports/") || strings.HasPrefix(p, "/rules/changes/stats")
+	return p == "/config" || strings.HasPrefix(p, "/review/") || p == "/review" || strings.HasPrefix(p, "/logs") || strings.HasPrefix(p, "/rules/reload") || strings.HasPrefix(p, "/rules/create") || strings.HasPrefix(p, "/rules/update") || strings.HasPrefix(p, "/rules/delete") || strings.HasPrefix(p, "/rules/history") || strings.Contains(p, "/history") || strings.Contains(p, "/diff") || strings.HasPrefix(p, "/rules/rollback") || strings.HasPrefix(p, "/imports/") || strings.HasPrefix(p, "/rules/changes/stats")
 }
 
 func SecurityHeaders() gin.MiddlewareFunc {
@@ -173,7 +173,7 @@ func (r *RateLimiter) allow(key string, limit int) bool {
 
 func AdminGuard(cfg config.Config) gin.MiddlewareFunc {
 	return func(c *gin.Context) bool {
-		if !strings.HasPrefix(c.Request.URL.Path, cfg.Admin.Path) {
+		if !strings.HasPrefix(c.Request.URL.Path, cfg.Admin.Path) && !strings.HasPrefix(c.Request.URL.Path, "/review/") {
 			return true
 		}
 		if cfg.UnsafeProduction {

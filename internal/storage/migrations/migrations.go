@@ -49,4 +49,16 @@ CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_created_at ON ai_audit_logs(created
 CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_request_id ON ai_audit_logs(request_id);
 CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_provider ON ai_audit_logs(provider);
 CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_status ON ai_audit_logs(status);
+`}, {ID: "004_phase15_review_queue", SQL: `
+CREATE TABLE IF NOT EXISTS review_cases (id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT UNIQUE NOT NULL, audit_id TEXT, source TEXT, status TEXT NOT NULL, priority TEXT NOT NULL, deterministic_decision TEXT, temporary_action TEXT, ai_score REAL, ai_risk_level TEXT, ai_recommendation TEXT, variant_score REAL, variant_risk_level TEXT, category TEXT, content_excerpt TEXT, content_hash TEXT, context_hash TEXT, matched_rules_json TEXT, ai_review_json TEXT, variant_review_json TEXT, decision_json TEXT, metadata_json TEXT, reviewer TEXT, operator_note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, decided_at TEXT, expires_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_review_cases_case_id ON review_cases(case_id);
+CREATE INDEX IF NOT EXISTS idx_review_cases_status ON review_cases(status);
+CREATE INDEX IF NOT EXISTS idx_review_cases_priority ON review_cases(priority);
+CREATE INDEX IF NOT EXISTS idx_review_cases_created_at ON review_cases(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_review_cases_context_hash ON review_cases(context_hash);
+CREATE INDEX IF NOT EXISTS idx_review_cases_temporary_action ON review_cases(temporary_action);
+CREATE TABLE IF NOT EXISTS review_case_events (id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT NOT NULL, created_at TEXT NOT NULL, actor TEXT, action TEXT NOT NULL, previous_status TEXT, new_status TEXT, note TEXT, metadata_json TEXT, FOREIGN KEY(case_id) REFERENCES review_cases(case_id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_review_case_events_case_id ON review_case_events(case_id);
+CREATE INDEX IF NOT EXISTS idx_review_case_events_created_at ON review_case_events(created_at DESC, id DESC);
+CREATE TABLE IF NOT EXISTS review_policy (id INTEGER PRIMARY KEY CHECK (id = 1), policy_json TEXT NOT NULL, version TEXT NOT NULL, updated_at TEXT NOT NULL, actor TEXT);
 `}}

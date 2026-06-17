@@ -129,3 +129,33 @@ AI review is disabled by default and remains an auxiliary metadata layer. The de
 Provider credentials are read from environment variables named by config, never from API requests, and are not returned by `/config`. Disabled or unconfigured providers do not block startup. Requests use bounded text excerpts, per-request timeouts, bounded retries, transient-only retry behavior, and circuit breaker state. Prompt templates are static config strings; API requests cannot load arbitrary template files. AI cache keys use hashes of relevant inputs and do not use raw text as the key.
 
 SQLite `ai_audit_logs` records compact metadata by default: request ID, provider, model, status, action/recommendation, confidence, risk level, category, latency, token usage, estimated cost, cache hit, error class, and metadata JSON. Full prompts and raw provider responses are not stored unless explicitly enabled in config. Scanner policy for Phase 14 remains: fix real issues, document precise invariants for false positives, and avoid broad suppressions or architecture damage for scanner-only zero findings.
+
+## Phase 15 internal review queue safety
+
+The review queue is an internal platform moderation workflow only. It must not be exposed or described as a customer support ticket, user appeal, feedback, reply, or user messaging system. Operators review cases created from uncertain AI and variant metadata; no external two-way communication workflow exists.
+
+Decision safety invariants:
+
+* The deterministic rule engine runs first and remains primary.
+* AI does not hard block by default; AI block output remains review-first unless explicitly configured elsewhere.
+* Pinyin and homophone-only variant matches remain review-first by default.
+* Temporary allow, temporary block, review-only, and log-only behavior is driven by review policy and recorded in case metadata/events.
+* Provider failures do not create false blocks or reverse deterministic rule decisions.
+
+Data safety invariants:
+
+* `review_cases` stores capped `content_excerpt`, `content_hash`, `context_hash`, compact matched-rule JSON, compact AI/variant metadata, policy version, temporary action, and operator decision metadata.
+* Full raw content is not stored by default in review cases.
+* Provider API keys, Authorization headers, and other secrets must not be written into review metadata.
+* Review export row count is capped by policy and storage limits.
+* Retention is represented by `expires_at` and `retention_days`; expired status is supported for cleanup workflows.
+
+API and SQL safety invariants:
+
+* `/review/*` routes are treated as admin/management routes and are subject to the admin guard and production management API protection.
+* Review list filters and sort fields are allowlisted; request values are passed as SQL parameters.
+* Bulk decisions are capped, validate every case ID, and run inside a transaction.
+* Operator decisions append event history and write `admin_operations` where storage is available.
+* Review exports use fixed formats (`json` or `csv`) and do not accept filesystem paths.
+
+Scanner policy for Phase 15 remains: fix real findings, document precise invariants for custom SQL/safepath sanitizer false positives, and do not damage the review-first architecture just to force CodeQL zero findings.

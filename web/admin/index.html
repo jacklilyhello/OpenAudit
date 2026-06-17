@@ -2,102 +2,140 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpenAudit Admin</title>
   <link rel="stylesheet" href="/admin/assets/style.css">
 </head>
 <body>
+<aside class="sidebar">
+  <div class="brand">OpenAudit</div>
+  <button class="nav active" data-view="overview">Overview</button>
+  <button class="nav" data-view="audit">Audit Logs</button>
+  <button class="nav" data-view="review">Review Queue</button>
+  <button class="nav" data-view="ai">AI Reviews</button>
+  <button class="nav" data-view="rules">Rules</button>
+  <button class="nav" data-view="releases">Rule Releases</button>
+  <button class="nav" data-view="imports">Imports</button>
+  <button class="nav" data-view="settings">Settings</button>
+</aside>
 <main>
-  <h1>OpenAudit Admin</h1>
-  <section>
-    <label>API Key <input id="apiKey" placeholder="dev-key"></label>
+  <header class="topbar">
+    <div>
+      <h1 id="pageTitle">Overview</h1>
+      <p id="pageSub">Internal moderation operations console</p>
+    </div>
+    <label class="keybox">API Key <input id="apiKey" placeholder="dev-key"></label>
     <button onclick="saveKey()">Save</button>
-    <pre id="error"></pre>
+  </header>
+  <pre id="error" class="error"></pre>
+
+  <section id="overview" class="view active">
+    <div id="metricGrid" class="metrics"></div>
+    <div class="panel">
+      <h2>Text Test</h2>
+      <textarea id="text">测试敏感词</textarea>
+      <button onclick="auditText()">Audit</button>
+      <pre id="auditResult"></pre>
+    </div>
   </section>
-  <section>
-    <h2>Text Test</h2>
-    <textarea id="text">测试敏感词</textarea>
-    <button onclick="auditText()">Audit</button>
-    <pre id="auditResult"></pre>
-  </section>
-  <section>
-    <h2>Service Config</h2>
-    <button onclick="loadConfig()">Load Config</button>
-    <pre id="config"></pre>
-  </section>
-  <section>
-    <h2>Rule Browser</h2>
-    <input id="ruleQ" placeholder="search">
-    <button onclick="loadRules()">Search</button>
-    <button onclick="bulkDisableCustom()">Disable Custom</button>
-    <button onclick="bulkEnableCustom()">Enable Custom</button>
-    <div id="rules"></div>
-    <pre id="ruleDetail"></pre>
-  </section>
-  <section>
-    <h2>Create Custom Rule</h2>
-    <input id="newId" placeholder="custom_keyword_001">
-    <input id="newWords" placeholder="word1,word2">
-    <button onclick="createRule()">Create</button>
-  </section>
-  <section>
-    <h2>Rule Release</h2>
-    <input id="draftId" placeholder="draft_rule_001">
-    <input id="draftWords" placeholder="word1,word2">
-    <button onclick="createDraft()">Save Draft</button>
-    <button onclick="loadDrafts()">Drafts</button>
-    <button onclick="loadStaged()">Staged</button>
-    <button onclick="publishStaged()">Publish Staged</button>
-    <button onclick="loadReleases()">Releases</button>
-    <button onclick="detectConflicts()">Conflicts</button>
-    <textarea id="simulateText" placeholder="sample text"></textarea>
-    <select id="simulateScope"><option>published</option><option>staged</option><option>draft</option></select>
-    <button onclick="simulateRules()">Simulate</button>
-    <div id="drafts"></div>
-    <div id="staged"></div>
-    <div id="releases"></div>
-    <pre id="releaseResult"></pre>
-  </section>
-  <section>
-    <h2>Audit Logs</h2>
-    <button onclick="loadStats()">Stats</button>
-    <button onclick="loadLogs()">Recent</button>
+
+  <section id="audit" class="view">
+    <div class="toolbar"><button onclick="loadStats()">Stats</button><button onclick="loadLogs()">Recent</button></div>
     <pre id="stats"></pre>
     <pre id="logs"></pre>
   </section>
-  <section>
-    <h2>Rule History</h2>
-    <input id="histRule" placeholder="rule_id">
-    <input id="histAction" placeholder="action">
-    <input id="histActor" placeholder="actor">
-    <input id="histSource" placeholder="source">
-    <input id="histBatch" placeholder="import_batch_id">
-    <button onclick="loadHistory()">Load History</button>
-    <div id="history"></div>
+
+  <section id="review" class="view">
+    <div id="reviewMetricGrid" class="metrics"></div>
+    <div class="toolbar filters">
+      <select id="reviewStatus"><option value="">status</option><option>pending</option><option>reviewing</option><option>approved</option><option>rejected</option><option>ignored</option><option>escalated</option><option>expired</option></select>
+      <select id="reviewPriority"><option value="">priority</option><option>low</option><option>medium</option><option>high</option><option>critical</option></select>
+      <select id="reviewAction"><option value="">temporary action</option><option>temporary_allow</option><option>temporary_block</option><option>review_only</option><option>log_only</option></select>
+      <input id="reviewCategory" placeholder="category">
+      <input id="reviewMinScore" placeholder="min score">
+      <button onclick="loadReviewCases()">Apply</button>
+      <button onclick="exportReviewCases()">Export CSV</button>
+    </div>
+    <div class="tablewrap"><table><thead><tr><th>Priority</th><th>Status</th><th>AI</th><th>Variant</th><th>Decision</th><th>Temporary</th><th>Category</th><th>Source</th><th>Created</th><th></th></tr></thead><tbody id="reviewRows"></tbody></table></div>
+  </section>
+
+  <section id="ai" class="view">
+    <div class="toolbar"><button onclick="loadAIReviews()">Load AI Reviews</button></div>
+    <div class="tablewrap"><table><thead><tr><th>Time</th><th>Provider</th><th>Status</th><th>Action</th><th>Confidence</th><th>Risk</th><th>Latency</th></tr></thead><tbody id="aiRows"></tbody></table></div>
+  </section>
+
+  <section id="rules" class="view">
+    <div class="toolbar">
+      <input id="ruleQ" placeholder="search rules">
+      <button onclick="loadRules()">Search</button>
+      <button onclick="bulkDisableCustom()">Disable Custom</button>
+      <button onclick="bulkEnableCustom()">Enable Custom</button>
+    </div>
+    <div id="rulesList" class="list"></div>
+    <div class="panel compact">
+      <h2>Create Custom Rule</h2>
+      <input id="newId" placeholder="custom_keyword_001">
+      <input id="newWords" placeholder="word1,word2">
+      <button onclick="createRule()">Create</button>
+    </div>
+    <pre id="ruleDetail"></pre>
+  </section>
+
+  <section id="releases" class="view">
+    <div class="toolbar">
+      <input id="draftId" placeholder="draft_rule_001">
+      <input id="draftWords" placeholder="word1,word2">
+      <button onclick="createDraft()">Save Draft</button>
+      <button onclick="loadDrafts()">Drafts</button>
+      <button onclick="loadStaged()">Staged</button>
+      <button onclick="publishStaged()">Publish</button>
+      <button onclick="loadReleases()">Releases</button>
+      <button onclick="detectConflicts()">Conflicts</button>
+    </div>
+    <textarea id="simulateText" placeholder="sample text"></textarea>
+    <select id="simulateScope"><option>published</option><option>staged</option><option>draft</option></select>
+    <button onclick="simulateRules()">Simulate</button>
+    <div class="columns"><div><h2>Drafts</h2><div id="drafts" class="list"></div></div><div><h2>Staged</h2><div id="staged" class="list"></div></div><div><h2>Releases</h2><div id="releaseList" class="list"></div></div></div>
+    <pre id="releaseResult"></pre>
+  </section>
+
+  <section id="imports" class="view">
+    <div class="toolbar"><button onclick="loadHistory()">History</button><button onclick="loadBatches()">Batches</button></div>
+    <div class="filters">
+      <input id="histRule" placeholder="rule_id"><input id="histAction" placeholder="action"><input id="histActor" placeholder="actor"><input id="histSource" placeholder="source"><input id="histBatch" placeholder="import_batch_id">
+    </div>
+    <div id="history" class="list"></div>
+    <div id="batches" class="list"></div>
     <pre id="historyDetail"></pre>
     <pre id="historyDiff"></pre>
-  </section>
-  <section>
-    <h2>Import Batches</h2>
-    <button onclick="loadBatches()">Load Batches</button>
-    <div id="batches"></div>
+    <div class="panel compact">
+      <h2>External Import</h2>
+      <input id="impInput" placeholder="./external-rules/Sensitive-lexicon">
+      <input id="impOutput" placeholder="./data/imported">
+      <input id="impSource" placeholder="sensitive-lexicon">
+      <select id="impType"><option>auto</option><option>keyword</option><option>domain</option><option>regex</option></select>
+      <input id="impCategory" placeholder="category override">
+      <input id="impRisk" placeholder="medium">
+      <input id="impAction" placeholder="review">
+      <label><input id="impStrict" type="checkbox"> strict</label>
+      <label><input id="impReload" type="checkbox"> reload_after_import</label>
+      <button onclick="importPreview()">Dry-run Preview</button>
+      <button onclick="runImport()">Run Import</button>
+    </div>
+    <pre id="importResult"></pre>
     <pre id="batchDetail"></pre>
   </section>
-  <section>
-    <h2>External Import</h2>
-    <input id="impInput" placeholder="./external-rules/Sensitive-lexicon">
-    <input id="impOutput" placeholder="./data/imported">
-    <input id="impSource" placeholder="sensitive-lexicon">
-    <select id="impType"><option>auto</option><option>keyword</option><option>domain</option><option>regex</option></select>
-    <input id="impCategory" placeholder="category override">
-    <input id="impRisk" placeholder="medium">
-    <input id="impAction" placeholder="review">
-    <label><input id="impStrict" type="checkbox"> strict</label>
-    <label><input id="impReload" type="checkbox"> reload_after_import</label>
-    <button onclick="importPreview()">Dry-run Preview</button>
-    <button onclick="runImport()">Run Import</button>
-    <pre id="importResult"></pre>
+
+  <section id="settings" class="view">
+    <div class="toolbar"><button onclick="loadConfig()">Load Config</button><button onclick="loadReviewPolicy()">Load Review Policy</button><button onclick="saveReviewPolicy()">Save Review Policy</button></div>
+    <div id="policyForm" class="policy-grid"></div>
+    <pre id="config"></pre>
   </section>
 </main>
+<aside id="drawer" class="drawer">
+  <button class="drawer-close" onclick="closeDrawer()">Close</button>
+  <div id="drawerContent"></div>
+</aside>
 <script src="/admin/assets/app.js"></script>
 </body>
 </html>

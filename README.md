@@ -178,6 +178,47 @@ Scanner policy: fix real gosec findings where practical. CodeQL may still requir
 $(go env GOPATH)/bin/gosec ./...
 ```
 
+## Phase 15 internal review queue
+
+OpenAudit now includes an internal platform moderation review queue for uncertain AI and variant results. This is not a customer support ticket, appeal, feedback, reply, or user messaging workflow. It is a one-way operator console for platform-side review of cases the engine already detected.
+
+The deterministic rule engine remains primary. Clear rule blocks remain blocks, clear rule allows remain allows unless review policy routes uncertain AI or variant metadata into the internal queue, and AI does not hard block by default. AI-only block output is treated as `block_recommended` unless explicit hard-block behavior is enabled outside the default review-first posture.
+
+Default review policy:
+
+```yaml
+review_policy:
+  enabled: true
+  ai_review_enabled: true
+  variant_review_enabled: true
+  ai_score_review_threshold: 0.70
+  ai_score_temporary_block_threshold: 0.90
+  ai_score_log_only_below: 0.40
+  variant_score_review_threshold: 0.70
+  uncertain_default_action: temporary_allow
+  allow_ai_hard_block: false
+  retention_days: 30
+  content_excerpt_max_bytes: 2048
+  max_export_rows: 10000
+```
+
+Uncertain cases can be temporarily allowed, temporarily blocked, routed as review-only, or logged only. Persistent `review_cases` store capped content excerpts, content/context hashes, compact matched rule/AI/variant metadata, temporary action, status, priority, and operator decision data. Full raw content is not stored by default. Operator actions are internal-only: approve, reject, ignore, escalate, reopen, and add note. Decisions and policy changes are logged through the review event trail and `admin_operations` where available.
+
+Review APIs are protected admin/management APIs:
+
+* `GET /review/cases`
+* `GET /review/cases/:case_id`
+* `POST /review/cases/:case_id/decide`
+* `POST /review/cases/:case_id/note`
+* `POST /review/cases/:case_id/reopen`
+* `POST /review/cases/bulk/decide`
+* `GET /review/stats`
+* `GET /review/policy`
+* `PUT /review/policy`
+* `GET /review/export`
+
+Pagination, filters, sort fields, bulk operations, excerpts, and exports are capped or allowlisted. Review exports include only compact case fields and capped excerpts.
+
 ## Phase 11 rule release workflow
 
 OpenAudit now supports a rule lifecycle around the existing YAML source of truth:
