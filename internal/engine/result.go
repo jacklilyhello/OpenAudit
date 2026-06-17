@@ -10,6 +10,30 @@ type RiskDetail struct {
 	BlockCount  int    `json:"block_count"`
 	ReviewCount int    `json:"review_count"`
 }
+type TokenUsage struct {
+	PromptTokens     int `json:"prompt_tokens,omitempty"`
+	CompletionTokens int `json:"completion_tokens,omitempty"`
+	TotalTokens      int `json:"total_tokens,omitempty"`
+}
+type AIReview struct {
+	Enabled       bool       `json:"enabled"`
+	RequestID     string     `json:"request_id,omitempty"`
+	Provider      string     `json:"provider,omitempty"`
+	Model         string     `json:"model,omitempty"`
+	Status        string     `json:"status"`
+	Action        string     `json:"action,omitempty"`
+	Confidence    float64    `json:"confidence,omitempty"`
+	RiskLevel     string     `json:"risk_level,omitempty"`
+	Category      string     `json:"category,omitempty"`
+	Explanation   string     `json:"explanation,omitempty"`
+	Reasons       []string   `json:"reasons,omitempty"`
+	CacheHit      bool       `json:"cache_hit"`
+	LatencyMS     int64      `json:"latency_ms,omitempty"`
+	TokenUsage    TokenUsage `json:"token_usage,omitempty"`
+	EstimatedCost float64    `json:"estimated_cost,omitempty"`
+	ErrorClass    string     `json:"error_class,omitempty"`
+	Error         string     `json:"error,omitempty"`
+}
 type Result struct {
 	Matched        bool       `json:"matched"`
 	Action         string     `json:"action"`
@@ -18,4 +42,5 @@ type Result struct {
 	OriginalText   string     `json:"original_text"`
 	NormalizedText string     `json:"normalized_text,omitempty"`
 	Hits           []Hit      `json:"hits"`
+	AIReview       *AIReview  `json:"ai_review,omitempty"`
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -132,6 +133,39 @@ func fill(c *Config) {
 	if c.Limits.MaxBodyBytes == 0 {
 		c.Limits.MaxBodyBytes = d.Limits.MaxBodyBytes
 	}
+	if c.AI.DefaultAction == "" {
+		c.AI.DefaultAction = d.AI.DefaultAction
+	}
+	if c.AI.Provider == "" {
+		c.AI.Provider = d.AI.Provider
+	}
+	if c.AI.TimeoutMS == 0 {
+		c.AI.TimeoutMS = d.AI.TimeoutMS
+	}
+	if c.AI.MaxRetries == 0 {
+		c.AI.MaxRetries = d.AI.MaxRetries
+	}
+	if c.AI.RetryBackoffMS == 0 {
+		c.AI.RetryBackoffMS = d.AI.RetryBackoffMS
+	}
+	if c.AI.CircuitBreakerFailureThreshold == 0 {
+		c.AI.CircuitBreakerFailureThreshold = d.AI.CircuitBreakerFailureThreshold
+	}
+	if c.AI.CircuitBreakerCooldownMS == 0 {
+		c.AI.CircuitBreakerCooldownMS = d.AI.CircuitBreakerCooldownMS
+	}
+	if c.AI.MaxExcerptRunes == 0 {
+		c.AI.MaxExcerptRunes = d.AI.MaxExcerptRunes
+	}
+	if c.AI.Cache.TTLSeconds == 0 {
+		c.AI.Cache.TTLSeconds = d.AI.Cache.TTLSeconds
+	}
+	fillAIProvider(&c.AI.Providers.OpenAI, d.AI.Providers.OpenAI)
+	fillAIProvider(&c.AI.Providers.DeepSeek, d.AI.Providers.DeepSeek)
+	fillAIProvider(&c.AI.Providers.Qwen, d.AI.Providers.Qwen)
+	fillAIProvider(&c.AI.Providers.Gemini, d.AI.Providers.Gemini)
+	fillAIProvider(&c.AI.Providers.Claude, d.AI.Providers.Claude)
+	fillAIProvider(&c.AI.Providers.Local, d.AI.Providers.Local)
 	if len(c.CORS.AllowedMethods) == 0 {
 		c.CORS.AllowedMethods = d.CORS.AllowedMethods
 	}
@@ -143,6 +177,17 @@ func fill(c *Config) {
 	}
 	c.SecurityHeaders.Enabled = true
 }
+func fillAIProvider(p *AIProviderConfig, d AIProviderConfig) {
+	if p.APIKeyEnv == "" {
+		p.APIKeyEnv = d.APIKeyEnv
+	}
+	if p.BaseURL == "" {
+		p.BaseURL = d.BaseURL
+	}
+	if p.Model == "" {
+		p.Model = d.Model
+	}
+}
 func Validate(c Config) error {
 	env := c.App.Env
 	if env != "development" && env != "production" && env != "test" {
@@ -153,6 +198,9 @@ func Validate(c Config) error {
 	}
 	if c.Storage.Backend != "sqlite" && c.Storage.Backend != "jsonl" && c.Storage.Backend != "memory" {
 		return fmt.Errorf("invalid storage.backend %q: must be sqlite, jsonl, or memory", c.Storage.Backend)
+	}
+	if err := validateAI(c.AI); err != nil {
+		return err
 	}
 	if strings.ContainsRune(c.Storage.SQLitePath, '\x00') || strings.Contains(c.Storage.SQLitePath, "..") || filepath.IsAbs(c.Storage.SQLitePath) {
 		return errors.New("storage.sqlite_path must be a relative safepath without NUL or parent traversal")
@@ -177,6 +225,41 @@ func Validate(c Config) error {
 	}
 	if c.Admin.Enabled && !c.Admin.RequireCloudflareAccess && !safeCIDRs(c.Admin.AllowedCIDRs) && !c.UnsafeProduction {
 		return errors.New("production admin requires Cloudflare Access or narrow allowed_cidrs unless OPENAUDIT_ALLOW_UNSAFE_PRODUCTION=true")
+	}
+	return nil
+}
+func validateAI(c AIConfig) error {
+	if c.DefaultAction != "" && c.DefaultAction != "review" {
+		return errors.New("ai.default_action must be review")
+	}
+	if c.Provider != "" && !has([]string{"openai", "deepseek", "qwen", "gemini", "claude", "local"}, c.Provider) {
+		return fmt.Errorf("invalid ai.provider %q", c.Provider)
+	}
+	if c.TimeoutMS < 0 || c.MaxRetries < 0 || c.RetryBackoffMS < 0 || c.CircuitBreakerFailureThreshold < 0 || c.CircuitBreakerCooldownMS < 0 || c.MaxExcerptRunes < 0 {
+		return errors.New("ai numeric limits must be non-negative")
+	}
+	if c.Cache.TTLSeconds < 0 {
+		return errors.New("ai.cache.ttl_seconds must be non-negative")
+	}
+	for name, p := range map[string]AIProviderConfig{"openai": c.Providers.OpenAI, "deepseek": c.Providers.DeepSeek, "qwen": c.Providers.Qwen, "gemini": c.Providers.Gemini, "claude": c.Providers.Claude, "local": c.Providers.Local} {
+		if err := validateAIProvider(name, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func validateAIProvider(name string, p AIProviderConfig) error {
+	if p.BaseURL != "" {
+		u, err := url.ParseRequestURI(p.BaseURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("ai.providers.%s.base_url must be an http or https URL", name)
+		}
+	}
+	if p.InputCostPer1K < 0 || p.OutputCostPer1K < 0 {
+		return fmt.Errorf("ai.providers.%s cost settings must be non-negative", name)
+	}
+	if name != "local" && p.Enabled && strings.TrimSpace(p.APIKeyEnv) == "" {
+		return fmt.Errorf("ai.providers.%s.api_key_env is required when provider is enabled", name)
 	}
 	return nil
 }

@@ -64,6 +64,62 @@ limits:
   max_hits: 100
   max_body_bytes: 1048576
 
+ai:
+  enabled: false
+  default_action: "review"
+  hard_block_enabled: false
+  provider: "openai"
+  model: ""
+  timeout_ms: 8000
+  max_retries: 2
+  retry_backoff_ms: 250
+  circuit_breaker_failure_threshold: 5
+  circuit_breaker_cooldown_ms: 30000
+  max_excerpt_runes: 2000
+  cache:
+    enabled: true
+    ttl_seconds: 3600
+  cost_tracking:
+    enabled: true
+  audit_logs:
+    enabled: true
+    store_prompts: false
+    store_raw_response: false
+  prompt:
+    version: "phase14-default-v1"
+    system_template: ""
+    user_template: ""
+  providers:
+    openai:
+      enabled: false
+      api_key_env: "OPENAI_API_KEY"
+      base_url: "https://api.openai.com/v1"
+      model: "gpt-4o-mini"
+    deepseek:
+      enabled: false
+      api_key_env: "DEEPSEEK_API_KEY"
+      base_url: "https://api.deepseek.com"
+      model: "deepseek-chat"
+    qwen:
+      enabled: false
+      api_key_env: "QWEN_API_KEY"
+      base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+      model: "qwen-plus"
+    gemini:
+      enabled: false
+      api_key_env: "GEMINI_API_KEY"
+      base_url: "https://generativelanguage.googleapis.com/v1beta"
+      model: "gemini-1.5-flash"
+    claude:
+      enabled: false
+      api_key_env: "ANTHROPIC_API_KEY"
+      base_url: "https://api.anthropic.com/v1"
+      model: "claude-3-5-haiku-latest"
+    local:
+      enabled: false
+      base_url: "http://127.0.0.1:11434/v1"
+      model: "llama3.1"
+
 rule_history:
   enabled: true
   path: "./storage/rule-history/history.jsonl"

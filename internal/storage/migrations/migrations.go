@@ -43,4 +43,10 @@ CREATE INDEX IF NOT EXISTS idx_rule_release_items_rule_id ON rule_release_items(
 CREATE TABLE IF NOT EXISTS rule_validation_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL, actor TEXT, target_state TEXT, target_version TEXT, status TEXT, conflicts_json TEXT, simulation_json TEXT, metadata_json TEXT);
 CREATE INDEX IF NOT EXISTS idx_rule_validation_runs_created_at ON rule_validation_runs(created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_rule_validation_runs_target ON rule_validation_runs(target_state, target_version);
+`}, {ID: "003_phase14_ai_review_logs", SQL: `
+CREATE TABLE IF NOT EXISTS ai_audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT, created_at TEXT NOT NULL, provider TEXT, model TEXT, status TEXT, action TEXT, confidence REAL, risk_level TEXT, category TEXT, latency_ms INTEGER, prompt_tokens INTEGER, completion_tokens INTEGER, total_tokens INTEGER, estimated_cost REAL, cache_hit INTEGER, error_class TEXT, metadata_json TEXT);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_created_at ON ai_audit_logs(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_request_id ON ai_audit_logs(request_id);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_provider ON ai_audit_logs(provider);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_status ON ai_audit_logs(status);
 `}}

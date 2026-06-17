@@ -857,3 +857,50 @@ Notes:
 * Pinyin and homophone-only generated variant matches do not hard block by default.
 * CodeQL clean output is not required for this phase; remaining custom sanitizer findings should be reviewed against documented invariants.
 * Gosec findings are fixed where practical and remaining findings are reported.
+
+## Commit pending
+
+Date: 2026-06-17
+
+Summary:
+
+* Implement Phase 14 AI review provider integration
+* Add explicit AI provider interface with OpenAI-compatible, Gemini, Claude, DeepSeek, Qwen, and local endpoint adapters
+* Keep AI disabled by default and preserve deterministic rule-engine authority
+* Add additive `ai_review` audit response metadata without removing existing response fields
+* Default AI provider `block` output to `block_recommended` unless hard-block mode is explicitly enabled
+* Add prompt template rendering with static config templates and a safe default review-first prompt
+* Add deterministic hash-based in-memory AI cache with TTL
+* Add bounded provider timeout, retry, backoff, and circuit breaker behavior
+* Add token usage and configurable estimated cost calculation
+* Add SQLite `ai_audit_logs` migration and query endpoint for compact AI attempt metadata
+* Add fake-provider tests for AI cache, prompt rendering, failure handling, circuit breaker behavior, and deterministic audit authority
+* Update API, README, security, config example, and CODEX documentation
+* Apply the Phase 14 scanner policy: fix real issues, document provider/path/logging invariants, and do not damage architecture for CodeQL zero findings
+
+Files:
+
+* internal/ai/...
+* internal/api/...
+* internal/config/...
+* internal/engine/...
+* internal/storage/sqlite/...
+* internal/storage/migrations/...
+* cmd/server/...
+* README.md
+* SECURITY.md
+* API.md
+* config.example.yml
+* CODEX.md
+
+Notes:
+
+* Append-only log entry for Phase 14.
+* Existing Phase 1-13 APIs remain backward compatible.
+* AI is an auxiliary review/explanation layer and does not change top-level deterministic rule-engine decisions.
+* AI unavailable, timeout, error, unconfigured provider, and circuit-open states do not break normal audit responses.
+* Provider credentials are read from configured environment variables only and are not required for tests.
+* Prompt/raw response storage remains disabled by default.
+* SQLite AI audit logs store compact metadata only by default.
+* CodeQL clean output is not required for this phase; remaining provider/logging/cache findings should be reviewed against documented invariants.
+* Gosec findings are fixed where practical and remaining findings are reported.
