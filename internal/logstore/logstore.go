@@ -1,10 +1,13 @@
 package logstore
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/openaudit/openaudit/internal/engine"
+	"github.com/openaudit/openaudit/internal/storage"
 	"time"
 )
 
@@ -30,9 +33,10 @@ type Options struct {
 	LogHits        bool
 }
 type Store struct {
-	mem   *Memory
-	jsonl *JSONL
-	opts  Options
+	mem     *Memory
+	jsonl   *JSONL
+	backend storage.Store
+	opts    Options
 }
 
 func New(path string, max int, enabled bool, opts Options) (*Store, error) {
@@ -45,6 +49,11 @@ func New(path string, max int, enabled bool, opts Options) (*Store, error) {
 		s.jsonl = j
 	}
 	return s, nil
+}
+func (s *Store) SetBackend(b storage.Store) {
+	if s != nil {
+		s.backend = b
+	}
 }
 func NewEntry(t, text string, res engine.Result, dur int64, remote, ua string, opts Options) Entry {
 	sum := sha256.Sum256([]byte(text))
@@ -62,9 +71,19 @@ func (s *Store) Append(e Entry) {
 		return
 	}
 	s.mem.Add(e)
+	if s.backend != nil {
+		raw, _ := json.Marshal(e)
+		_, _ = s.backend.InsertAuditLog(context.Background(), storage.AuditLog{RequestID: e.ID, CreatedAt: e.Timestamp, Method: e.RequestType, Path: "/audit/" + e.RequestType, ClientIP: e.RemoteAddr, Decision: e.Action, StatusCode: 200, DurationMS: e.DurationMS, RequestBytes: e.TextLength, NormalizedBytes: e.TextLength, MatchCount: e.HitCount, RuleHitCount: e.HitCount, RawJSON: string(raw)}, e.Hits)
+	}
 	if s.jsonl != nil {
 		_ = s.jsonl.Append(e)
 	}
+}
+func (s *Store) Backend() storage.Store {
+	if s == nil {
+		return nil
+	}
+	return s.backend
 }
 func (s *Store) Recent() []Entry {
 	if s == nil {

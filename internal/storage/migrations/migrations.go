@@ -1,0 +1,33 @@
+package migrations
+
+type Migration struct {
+	ID  string
+	SQL string
+}
+
+var All = []Migration{{ID: "001_phase10_core", SQL: `
+CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT, created_at TEXT NOT NULL, method TEXT, path TEXT, client_ip TEXT, api_key_id TEXT, decision TEXT, status_code INTEGER, duration_ms INTEGER, request_bytes INTEGER, normalized_bytes INTEGER, match_count INTEGER, rule_hit_count INTEGER, metadata_json TEXT, raw_json TEXT);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_request_id ON audit_logs(request_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_decision ON audit_logs(decision);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_client_ip ON audit_logs(client_ip);
+CREATE TABLE IF NOT EXISTS rule_hits (id INTEGER PRIMARY KEY AUTOINCREMENT, audit_log_id INTEGER, request_id TEXT, rule_id TEXT, rule_name TEXT, category TEXT, severity TEXT, match_type TEXT, matched_text TEXT, normalized_text TEXT, start_pos INTEGER, end_pos INTEGER, metadata_json TEXT, FOREIGN KEY(audit_log_id) REFERENCES audit_logs(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_rule_hits_audit_log_id ON rule_hits(audit_log_id);
+CREATE INDEX IF NOT EXISTS idx_rule_hits_request_id ON rule_hits(request_id);
+CREATE INDEX IF NOT EXISTS idx_rule_hits_rule_id ON rule_hits(rule_id);
+CREATE TABLE IF NOT EXISTS rule_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, change_id TEXT UNIQUE, created_at TEXT NOT NULL, actor TEXT, operation TEXT, source TEXT, rule_id TEXT, rule_name TEXT, file_path TEXT, before_hash TEXT, after_hash TEXT, diff_json TEXT, metadata_json TEXT, raw_json TEXT);
+CREATE INDEX IF NOT EXISTS idx_rule_changes_created_at ON rule_changes(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_rule_changes_rule_id ON rule_changes(rule_id);
+CREATE INDEX IF NOT EXISTS idx_rule_changes_operation ON rule_changes(operation);
+CREATE INDEX IF NOT EXISTS idx_rule_changes_source ON rule_changes(source);
+CREATE TABLE IF NOT EXISTS import_batches (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT UNIQUE, created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, status TEXT, dry_run INTEGER, input_root TEXT, output_root TEXT, report_path TEXT, report_format TEXT, rules_seen INTEGER, rules_written INTEGER, rules_skipped INTEGER, errors_count INTEGER, stats_json TEXT, errors_json TEXT, raw_json TEXT);
+CREATE INDEX IF NOT EXISTS idx_import_batches_created_at ON import_batches(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_import_batches_batch_id ON import_batches(batch_id);
+CREATE INDEX IF NOT EXISTS idx_import_batches_status ON import_batches(status);
+CREATE TABLE IF NOT EXISTS admin_operations (id INTEGER PRIMARY KEY AUTOINCREMENT, operation_id TEXT, created_at TEXT NOT NULL, actor TEXT, client_ip TEXT, operation TEXT, resource_type TEXT, resource_id TEXT, status TEXT, status_code INTEGER, metadata_json TEXT, raw_json TEXT);
+CREATE INDEX IF NOT EXISTS idx_admin_operations_created_at ON admin_operations(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_operations_operation ON admin_operations(operation);
+CREATE INDEX IF NOT EXISTS idx_admin_operations_actor ON admin_operations(actor);
+CREATE INDEX IF NOT EXISTS idx_admin_operations_resource_type ON admin_operations(resource_type);
+CREATE INDEX IF NOT EXISTS idx_admin_operations_resource_id ON admin_operations(resource_id);
+`}}

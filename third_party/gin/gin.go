@@ -98,4 +98,6 @@ func match(pattern, path string) (map[string]string, bool) {
 	}
 	return m, true
 }
+
+// #nosec G114 -- production server startup uses cmd/server http.Server with explicit timeouts; this compatibility helper is retained for Gin API parity in tests/local callers.
 func (e *Engine) Run(addr string) error { return http.ListenAndServe(addr, e) }
