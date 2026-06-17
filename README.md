@@ -4,6 +4,8 @@ OpenAudit is an open-source content moderation and risk audit engine for policy-
 
 It provides a local Go service with YAML rules, keyword/regex/domain/pinyin/homophone matching, normalization, risk scoring, API key middleware, audit logs, auxiliary AI review providers, rule management APIs, an admin dashboard, CI checks, security scanning workflows, Docker support, and release build foundations.
 
+OpenAudit is designed for high-performance local content auditing, with benchmark evidence for keyword, regex, domain, batch, reload, memory, and selected latency behavior. See [BENCHMARK.md](BENCHMARK.md) for reproducible reference measurements and caveats; benchmark results are not universal production guarantees.
+
 ## Quick start
 
 ```bash

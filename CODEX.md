@@ -955,3 +955,39 @@ Notes:
 * All temporary actions and human decisions are auditable.
 * CodeQL clean output is not required for this phase; remaining custom sanitizer findings should be reviewed against documented invariants.
 * Gosec findings are fixed where practical and remaining findings are reported.
+
+## Commit pending
+
+Date: 2026-06-17
+
+Summary:
+
+* Implement Phase 12 performance benchmark documentation
+* Run benchmark measurements against the current OpenAudit main code
+* Document keyword matcher benchmark evidence
+* Document regex matcher benchmark evidence
+* Document domain matcher benchmark evidence
+* Document 10k / 100k / 1M keyword coverage where measured or explain limitations
+* Document 1KB / 10KB / 100KB text coverage where measured
+* Document batch 100 / 1000 measurements where measured
+* Document reload/build timing
+* Document memory allocation results
+* Document p50 / p95 / p99 latency where measured
+* Add BENCHMARK.md with measured results and reproduction commands
+* Update README.md with conservative evidence-backed high-performance wording
+* Preserve runtime behavior and commit Markdown documentation only
+
+Files:
+
+* BENCHMARK.md
+* README.md
+* CODEX.md
+
+Notes:
+
+* Phase 12 is benchmark and documentation evidence only.
+* Final committed changes are Markdown-only.
+* Runtime matcher behavior is not changed.
+* No benchmark helper code is committed.
+* CodeQL clean output is not required for this phase; real issues are fixed and false positives are documented with invariants if applicable.
+* Gosec findings are fixed where practical and remaining findings are reported.
