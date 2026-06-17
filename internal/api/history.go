@@ -9,6 +9,7 @@ import (
 	"github.com/openaudit/openaudit/internal/rules"
 	"github.com/openaudit/openaudit/internal/safepath"
 	"github.com/openaudit/openaudit/internal/security"
+	"github.com/openaudit/openaudit/internal/storage"
 	"gopkg.in/yaml.v3"
 	"os"
 )
@@ -17,6 +18,7 @@ type HistoryServices struct {
 	Changes        *rulehistory.Store
 	Batches        *rulehistory.BatchStore
 	TrustedProxies []string
+	Storage        storage.Store
 }
 
 func RegisterHistory(r gin.IRouter, e *engine.Engine, h HistoryServices) {
@@ -158,6 +160,7 @@ func rollbackRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string
 	entry.Note = req.Note
 	entry.ReloadSuccess = true
 	_ = h.Changes.Append(entry)
+	logAdminOperation(c, h, "rollback", "rule", id, "success", 200)
 	var r rules.Rule
 	_ = yaml.Unmarshal(after, &r)
 	c.JSON(200, gin.H{"ok": true, "rule": r, "reload_success": true})
@@ -207,4 +210,15 @@ func baseChange(c *gin.Context, h HistoryServices, id string, act rulehistory.Ac
 		actor = "api"
 	}
 	return rulehistory.Change{Actor: actor, Action: act, RuleID: id, Before: before, After: after, Diff: rulehistory.TextDiff(before, after), FilePath: path, ReloadSuccess: true, RemoteAddr: security.ClientIP(c.Request, h.TrustedProxies), UserAgent: c.Request.UserAgent()}
+}
+
+func logAdminOperation(c *gin.Context, h HistoryServices, operation, resourceType, resourceID, status string, code int) {
+	if h.Storage == nil {
+		return
+	}
+	actor := c.Request.Header.Get("Cf-Access-Authenticated-User-Email")
+	if actor == "" {
+		actor = "unknown"
+	}
+	_ = h.Storage.InsertAdminOperation(c.Request.Context(), storage.AdminOperation{OperationID: rulehistory.NewID("op"), Actor: actor, ClientIP: security.ClientIP(c.Request, h.TrustedProxies), Operation: operation, ResourceType: resourceType, ResourceID: resourceID, Status: status, StatusCode: code})
 }

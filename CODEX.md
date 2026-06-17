@@ -715,3 +715,49 @@ Notes:
 * Existing Phase 1/2/3/4/5/6/7/8 APIs remain backward compatible.
 * CodeQL clean output is not required for this phase; remaining path-flow findings should be documented with validated-path invariants.
 * Gosec findings are fixed where practical and remaining findings are reported.
+
+Commit e08069755c8e9787aab64273cb2eb917a81a6fc8
+
+Date: 2026-06-16
+
+Summary:
+
+* Implement Phase 10 SQLite persistence backend
+* Add local SQLite storage layer with schema migrations
+* Add persistent tables for audit logs, rule hits, rule changes, import batches, and admin operations
+* Add paginated query support for audit logs and import batches
+* Preserve JSONL as fallback or legacy compatibility where practical
+* Add JSON and CSV export support for persisted records
+* Keep YAML rule files as the rule source of truth while tracking rule changes in SQLite
+* Use Phase 9 safepath protections for database and generated file paths
+* Add tests for migrations, pagination, persistence, exports, and compatibility
+* Update API, deployment, importing, security, README, and CODEX documentation
+* Apply the Phase 10 scanner policy: fix real issues, document custom sanitizer invariants, and do not damage architecture for CodeQL zero findings
+
+Files:
+
+* internal/storage/...
+* internal/storage/sqlite/...
+* internal/storage/migrations/...
+* internal/logstore/...
+* internal/rulehistory/...
+* internal/importer/...
+* internal/api/...
+* internal/config/...
+* cmd/server/...
+* cmd/importer/...
+* README.md
+* SECURITY.md
+* IMPORTING.md
+* DEPLOYMENT.md
+* API.md
+* CODEX.md
+
+Notes:
+
+* Append-only log entry for Phase 10.
+* Existing Phase 1-9 APIs remain backward compatible.
+* SQLite is implemented first; PostgreSQL is intentionally deferred.
+* JSONL remains available as fallback or legacy compatibility where practical.
+* CodeQL clean output is not required for this phase; remaining custom sanitizer findings should be reviewed against documented invariants.
+* Gosec findings are fixed where practical and remaining findings are reported.

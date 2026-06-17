@@ -22,6 +22,7 @@ func RegisterRules(r gin.IRouter, e *engine.Engine, h HistoryServices) {
 			c.JSON(http.StatusOK, gin.H{"ok": false, "message": "rules reload failed", "error": err.Error(), "stats": e.Stats()})
 			return
 		}
+		logAdminOperation(c, h, "reload", "rules", "all", "success", http.StatusOK)
 		c.JSON(http.StatusOK, gin.H{"ok": true, "message": "rules reloaded", "stats": e.Stats()})
 	})
 	r.GET("/rules", func(c *gin.Context) { listRules(c, e) })
@@ -221,6 +222,7 @@ func createRule(c *gin.Context, e *engine.Engine, h HistoryServices) {
 			entry.Source = req.Rule.Source
 			_ = h.Changes.Append(entry)
 		}
+		logAdminOperation(c, h, "create", "rule", req.Rule.ID, "success", 200)
 		c.JSON(200, gin.H{"ok": true, "rule": req.Rule})
 		return
 	}
@@ -274,6 +276,7 @@ func updateRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 		entry.Source = rule.Source
 		_ = h.Changes.Append(entry)
 	}
+	logAdminOperation(c, h, "update", "rule", id, "success", 200)
 	c.JSON(200, gin.H{"ok": true, "rule": rule})
 }
 func applyPatch(r *rules.Rule, p map[string]any) {
@@ -348,6 +351,7 @@ func deleteRule(c *gin.Context, e *engine.Engine, h HistoryServices, id string) 
 		entry.Source = oldRule.Source
 		_ = h.Changes.Append(entry)
 	}
+	logAdminOperation(c, h, "delete", "rule", id, "success", 200)
 	c.JSON(200, gin.H{"ok": true})
 }
 

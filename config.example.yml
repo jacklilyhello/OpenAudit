@@ -51,6 +51,13 @@ audit_log:
   max_entries: 1000
   log_request_text: true
   log_hits: true
+storage:
+  backend: "sqlite"
+  root: "./storage"
+  sqlite_path: "data/openaudit.db"
+  legacy_jsonl_fallback: true
+  auto_migrate: true
+
 limits:
   max_text_runes: 10000
   max_batch_items: 100

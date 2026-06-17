@@ -2,10 +2,12 @@ package rulehistory
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/openaudit/openaudit/internal/safepath"
+	"github.com/openaudit/openaudit/internal/storage"
 	"os"
 	"sort"
 	"sync"
@@ -36,11 +38,17 @@ type BatchFilter struct {
 	Limit, Offset  int
 }
 type BatchStore struct {
-	path string
-	mu   sync.Mutex
+	path    string
+	mu      sync.Mutex
+	backend storage.Store
 }
 
 func NewBatchStore(path string) *BatchStore { return &BatchStore{path: path} }
+func (b *BatchStore) SetBackend(s storage.Store) {
+	if b != nil {
+		b.backend = s
+	}
+}
 func (b *BatchStore) AppendBatch(x ImportBatch) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -65,7 +73,19 @@ func (b *BatchStore) AppendBatch(x ImportBatch) error {
 		}
 		return err
 	}
-	return f.Close()
+	closeErr := f.Close()
+	if b.backend != nil {
+		raw, _ := json.Marshal(x)
+		stats, _ := json.Marshal(map[string]any{"source": x.Source, "files_scanned": x.FilesScanned, "keywords_read": x.KeywordsRead, "keywords_deduplicated": x.KeywordsDeduplicated, "generated_files": x.GeneratedFiles})
+		_ = b.backend.InsertImportBatch(context.Background(), storage.ImportBatch{BatchID: x.BatchID, CreatedAt: x.Timestamp, Status: x.Status, DryRun: x.DryRun, InputRoot: x.InputPath, OutputRoot: x.OutputPath, RulesSeen: x.KeywordsRead, RulesWritten: x.RulesWritten, RulesSkipped: x.KeywordsDeduplicated, ErrorsCount: boolErrCount(x.Error), StatsJSON: string(stats), ErrorsJSON: x.Error, RawJSON: string(raw)})
+	}
+	return closeErr
+}
+func boolErrCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	return 1
 }
 func (b *BatchStore) all() (batches []ImportBatch, err error) {
 	root, path, err := validatedStoreFile(b.path)

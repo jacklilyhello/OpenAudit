@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"github.com/openaudit/openaudit/internal/logstore"
 	"github.com/openaudit/openaudit/internal/rulehistory"
 	"github.com/openaudit/openaudit/internal/security"
+	"github.com/openaudit/openaudit/internal/storage"
+	storagesqlite "github.com/openaudit/openaudit/internal/storage/sqlite"
 )
 
 func main() {
@@ -30,9 +33,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("load rules: %v", err)
 	}
+	var persistent storage.Store
+	if cfg.Storage.Backend == "sqlite" {
+		persistent, err = storagesqlite.Open(context.Background(), storagesqlite.Options{Root: cfg.Storage.Root, Path: cfg.Storage.SQLitePath, AutoMigrate: cfg.Storage.AutoMigrate})
+		if err != nil {
+			if cfg.App.Env == "production" || !cfg.Storage.LegacyJSONLFallback {
+				log.Fatalf("sqlite storage: %v", err)
+			}
+			log.Printf("sqlite storage unavailable; using legacy JSONL fallback: %v", err)
+		} else {
+			defer persistent.Close()
+		}
+	}
 	logs, err := logstore.New(cfg.AuditLog.Path, cfg.AuditLog.MaxEntries, cfg.AuditLog.Enabled, logstore.Options{LogRequestText: cfg.AuditLog.LogRequestText, LogHits: cfg.AuditLog.LogHits})
 	if err != nil {
 		log.Printf("audit log disabled: %v", err)
+	}
+	if persistent != nil && logs != nil {
+		logs.SetBackend(persistent)
 	}
 	r := gin.Default()
 	if cfg.SecurityHeaders.Enabled {
@@ -47,15 +65,20 @@ func main() {
 	api.RegisterOps(r, cfg)
 	api.RegisterAuditWithOptions(r, e, cfg.Limits, logs)
 	api.RegisterBatchWithOptions(r, e, cfg.Limits)
-	hist := api.HistoryServices{TrustedProxies: cfg.Server.TrustedProxies}
+	hist := api.HistoryServices{TrustedProxies: cfg.Server.TrustedProxies, Storage: persistent}
 	if cfg.RuleHistory.Enabled {
 		hist.Changes = rulehistory.New(cfg.RuleHistory.Path, cfg.RuleHistory.MaxEntries)
 		hist.Batches = rulehistory.NewBatchStore(cfg.RuleHistory.ImportBatchesPath)
+		if persistent != nil {
+			hist.Changes.SetBackend(persistent)
+			hist.Batches.SetBackend(persistent)
+		}
 	}
 	api.RegisterRules(r, e, hist)
 	api.RegisterHistory(r, e, hist)
 	api.RegisterImports(r, cfg, hist.Batches)
 	api.RegisterLogs(r, logs)
+	api.RegisterStorageExports(r, persistent)
 	if cfg.Admin.Enabled {
 		admin.RegisterAt(r, cfg.Admin.Path)
 	}

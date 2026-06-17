@@ -13,6 +13,7 @@ type Config struct {
 	AuditLog         AuditLogConfig         `yaml:"audit_log" json:"audit_log"`
 	RuleHistory      RuleHistoryConfig      `yaml:"rule_history" json:"rule_history"`
 	Importer         ImporterConfig         `yaml:"importer" json:"importer"`
+	Storage          StorageConfig          `yaml:"storage" json:"storage"`
 	Limits           LimitsConfig           `yaml:"limits" json:"limits"`
 	UnsafeProduction bool                   `yaml:"-" json:"unsafe_production"`
 }
@@ -98,6 +99,14 @@ type ImporterConfig struct {
 	AutoReloadAfterImport bool     `yaml:"auto_reload_after_import" json:"auto_reload_after_import"`
 	AllowRemoteClone      bool     `yaml:"allow_remote_clone" json:"allow_remote_clone"`
 	AllowedCloneHosts     []string `yaml:"allowed_clone_hosts" json:"allowed_clone_hosts"`
+}
+
+type StorageConfig struct {
+	Backend             string `yaml:"backend" json:"backend"`
+	Root                string `yaml:"root" json:"root"`
+	SQLitePath          string `yaml:"sqlite_path" json:"sqlite_path"`
+	LegacyJSONLFallback bool   `yaml:"legacy_jsonl_fallback" json:"legacy_jsonl_fallback"`
+	AutoMigrate         bool   `yaml:"auto_migrate" json:"auto_migrate"`
 }
 
 type LimitsConfig struct {

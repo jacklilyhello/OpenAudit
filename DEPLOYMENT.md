@@ -104,3 +104,43 @@ Back up `storage/rule-history/` with the rule data directory. Custom-rule rollba
 Back up `data/imported/`, `storage/imports/`, and `storage/rule-history/import-batches.jsonl` with other operational state. Keep `external-rules/` operator-managed and out of git; it may contain large or private upstream rulesets.
 
 For local scanner review, run `$(go env GOPATH)/bin/gosec ./...`. CodeQL may still require manual review for path-flow findings that pass through `internal/safepath`; review those against the documented root-constrained path invariant instead of relying on scanner output alone.
+
+## Phase 10 SQLite persistence
+
+OpenAudit now starts with a local SQLite persistence backend by default. The backend is intended for long-term, pageable local query storage while keeping YAML rule files as the rule source of truth. PostgreSQL is intentionally deferred to a later phase; Phase 10 only adds the storage boundary needed for future backends.
+
+Default configuration:
+
+```yaml
+storage:
+  backend: sqlite
+  root: ./storage
+  sqlite_path: data/openaudit.db
+  legacy_jsonl_fallback: true
+  auto_migrate: true
+```
+
+The database path is resolved under `storage.root` through the Phase 9 safepath helpers. Runtime directories are created with `0750` permissions and the database file is chmodded to `0600` where the platform allows it. In production, SQLite initialization or migration failures stop startup. In development, `legacy_jsonl_fallback: true` allows the existing JSONL audit and history files to continue operating if SQLite cannot be opened.
+
+SQLite migrations create `schema_migrations`, `audit_logs`, `rule_hits`, `rule_changes`, `import_batches`, and `admin_operations`. Migrations run in deterministic order inside a transaction and are safe to repeat.
+
+Queryable storage endpoints include:
+
+* `GET /storage/audit_logs?limit=50&offset=0`
+* `GET /storage/import_batches?limit=50&offset=0`
+* `GET /storage/rule_changes?limit=50&offset=0`
+* `GET /storage/admin_operations?limit=50&offset=0`
+* `GET /storage/export/audit_logs?format=json|csv&limit=1000`
+* `GET /storage/export/import_batches?format=json|csv&limit=1000`
+* `GET /storage/export/rule_changes?format=json|csv&limit=1000`
+* `GET /storage/export/admin_operations?format=json|csv&limit=1000`
+
+Pagination parameters are validated and capped. SQL filters use parameterized arguments, and export targets are selected from fixed route values rather than request-controlled SQL identifiers. CSV output is generated through Go's `encoding/csv` package.
+
+Legacy JSONL files remain compatible for audit logs, rule history, and import batch history. Phase 10 mirrors new writes into SQLite where practical but does not remove JSONL files and does not move YAML rules into the database.
+
+Scanner policy: fix real gosec findings where practical. CodeQL may still require manual review for custom safepath sanitizer flows around database/export paths; the invariant is that database paths are relative names resolved beneath a safepath-validated storage root, and SQL WHERE/ORDER fragments are assembled only from fixed code constants with request values passed as parameters. Run gosec locally with:
+
+```sh
+$(go env GOPATH)/bin/gosec ./...
+```

@@ -108,6 +108,18 @@ func fill(c *Config) {
 	if c.AuditLog.MaxEntries == 0 {
 		c.AuditLog.MaxEntries = d.AuditLog.MaxEntries
 	}
+	if c.Storage.Backend == "" {
+		c.Storage.Backend = d.Storage.Backend
+	}
+	if c.Storage.Root == "" {
+		c.Storage.Root = d.Storage.Root
+	}
+	if c.Storage.SQLitePath == "" {
+		c.Storage.SQLitePath = d.Storage.SQLitePath
+	}
+	if !c.Storage.AutoMigrate {
+		c.Storage.AutoMigrate = d.Storage.AutoMigrate
+	}
 	if c.Limits.MaxTextRunes == 0 {
 		c.Limits.MaxTextRunes = d.Limits.MaxTextRunes
 	}
@@ -138,6 +150,15 @@ func Validate(c Config) error {
 	}
 	if c.CloudflareAccess.VerifyJWT {
 		return errors.New("Cloudflare Access JWT verification is not implemented yet")
+	}
+	if c.Storage.Backend != "sqlite" && c.Storage.Backend != "jsonl" && c.Storage.Backend != "memory" {
+		return fmt.Errorf("invalid storage.backend %q: must be sqlite, jsonl, or memory", c.Storage.Backend)
+	}
+	if strings.ContainsRune(c.Storage.SQLitePath, '\x00') || strings.Contains(c.Storage.SQLitePath, "..") || filepath.IsAbs(c.Storage.SQLitePath) {
+		return errors.New("storage.sqlite_path must be a relative safepath without NUL or parent traversal")
+	}
+	if strings.ContainsRune(c.Storage.Root, '\x00') || strings.Contains(c.Storage.Root, "..") {
+		return errors.New("storage.root must not contain NUL or parent traversal")
 	}
 	if c.App.Env != "production" {
 		return nil

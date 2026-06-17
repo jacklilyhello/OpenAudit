@@ -3,10 +3,14 @@ package rulehistory
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/openaudit/openaudit/internal/safepath"
+	"github.com/openaudit/openaudit/internal/storage"
 	"os"
 	"sort"
 	"sync"
@@ -14,13 +18,19 @@ import (
 )
 
 type Store struct {
-	path string
-	max  int
-	mu   sync.Mutex
+	path    string
+	max     int
+	mu      sync.Mutex
+	backend storage.Store
 }
 
 func New(path string, max int) *Store { return &Store{path: path, max: max} }
-func NewID(prefix string) string      { return fmt.Sprintf("%s_%d", prefix, time.Now().UTC().UnixNano()) }
+func (s *Store) SetBackend(b storage.Store) {
+	if s != nil {
+		s.backend = b
+	}
+}
+func NewID(prefix string) string { return fmt.Sprintf("%s_%d", prefix, time.Now().UTC().UnixNano()) }
 func (s *Store) Append(c Change) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -53,6 +63,13 @@ func (s *Store) Append(c Change) error {
 	}
 	if err := f.Close(); err != nil {
 		return err
+	}
+	if s.backend != nil {
+		raw, _ := json.Marshal(c)
+		diff, _ := json.Marshal(c.Diff)
+		bh := sha256.Sum256([]byte(c.Before))
+		ah := sha256.Sum256([]byte(c.After))
+		_ = s.backend.InsertRuleChange(context.Background(), storage.RuleChange{ChangeID: c.ChangeID, CreatedAt: c.Timestamp, Actor: c.Actor, Operation: string(c.Action), Source: c.Source, RuleID: c.RuleID, FilePath: c.FilePath, BeforeHash: hex.EncodeToString(bh[:]), AfterHash: hex.EncodeToString(ah[:]), DiffJSON: string(diff), RawJSON: string(raw)})
 	}
 	if s.max > 0 {
 		return s.trim()
