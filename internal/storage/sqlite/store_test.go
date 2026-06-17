@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/storage"
+	"github.com/openaudit/openaudit/internal/storage/migrations"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,7 +50,7 @@ func TestRepeatedMigrationIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	if err := s.DB().QueryRowContext(context.Background(), "SELECT COUNT(*) FROM schema_migrations").Scan(&n); err != nil || n != 1 {
+	if err := s.DB().QueryRowContext(context.Background(), "SELECT COUNT(*) FROM schema_migrations").Scan(&n); err != nil || n != len(migrations.All) {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
 }
@@ -117,6 +118,34 @@ func TestRuleChangesImportBatchesAdminOperations(t *testing.T) {
 	ap, err := s.QueryAdminOperations(ctx, storage.AdminFilter{Operation: "reload", Limit: 10})
 	if err != nil || len(ap.Items) != 1 {
 		t.Fatalf("admin %+v %v", ap, err)
+	}
+}
+
+func TestPhase11RuleReleaseTables(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if err := s.UpsertRuleLifecycle(ctx, storage.RuleLifecycle{RuleID: "r1", State: "draft", Actor: "api", Source: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	lp, err := s.QueryRuleLifecycle(ctx, storage.LifecycleFilter{State: "draft", Limit: 10})
+	if err != nil || len(lp.Items) != 1 {
+		t.Fatalf("lifecycle %+v %v", lp, err)
+	}
+	rel := storage.RuleRelease{Version: "v1", Actor: "api", Status: "published", RuleCount: 1, AddedCount: 1, SnapshotPath: ".openaudit-release/snapshots/v1", ValidationJSON: `{"ok":true}`}
+	items := []storage.RuleReleaseItem{{Version: "v1", RuleID: "r1", Operation: "add", AfterHash: "abc", FilePath: "custom/r1.yml"}}
+	if err := s.InsertRuleRelease(ctx, rel, items); err != nil {
+		t.Fatal(err)
+	}
+	rp, err := s.QueryRuleReleases(ctx, storage.ReleaseFilter{Limit: 10})
+	if err != nil || len(rp.Items) != 1 {
+		t.Fatalf("releases %+v %v", rp, err)
+	}
+	got, gotItems, ok, err := s.GetRuleRelease(ctx, "v1")
+	if err != nil || !ok || got.Version != "v1" || len(gotItems) != 1 {
+		t.Fatalf("release %+v items=%+v ok=%v err=%v", got, gotItems, ok, err)
+	}
+	if err := s.InsertRuleValidationRun(ctx, storage.RuleValidationRun{RunID: "vr1", TargetState: "staged", Status: "passed"}); err != nil {
+		t.Fatal(err)
 	}
 }
 func TestExportDataCSVCompatible(t *testing.T) {

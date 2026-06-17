@@ -145,3 +145,9 @@ Scanner policy: fix real gosec findings where practical. CodeQL may still requir
 ```sh
 $(go env GOPATH)/bin/gosec ./...
 ```
+
+## Phase 11 import batch rollback
+
+`POST /imports/batches/:batch_id/rollback` can remove imported YAML files only when the recorded batch metadata includes generated file paths. The rollback path is safepath-constrained under the rule data root and refuses non-YAML targets. Older batches without generated file metadata return a clear rollback-unavailable error; OpenAudit does not guess which rules to delete and does not remove unrelated files.
+
+For safer release operations, import into draft/staged workflows where practical, run `POST /rules/prepublish-test`, then publish staged rules to create a ruleset version. Whole-ruleset rollback remains available through release snapshots even when an import batch itself cannot be exactly rolled back.

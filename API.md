@@ -308,3 +308,95 @@ Scanner policy: fix real gosec findings where practical. CodeQL may still requir
 ```sh
 $(go env GOPATH)/bin/gosec ./...
 ```
+
+## Phase 11 rule release workflow
+
+Phase 11 keeps YAML rule files as the source of truth and adds lifecycle metadata around them. Existing loaded YAML rules are treated as `published`. Draft and staged rule YAML is stored under the hidden safepath-constrained release root `data/.openaudit-release/`, which is ignored by the live rule loader. Successful publishes create monotonic versions such as `v1`, `v2`, and write snapshots under `data/.openaudit-release/snapshots/<version>/`.
+
+Management endpoints are protected like the existing rule APIs in production.
+
+### Lifecycle
+
+* `GET /rules/drafts`
+* `POST /rules/drafts`
+* `PUT /rules/drafts/:id`
+* `DELETE /rules/drafts/:id`
+* `POST /rules/drafts/:id/stage`
+* `GET /rules/staged`
+
+Draft create/update request:
+
+```json
+{"rule":{"id":"candidate_001","type":"keyword","category":"custom","risk_level":"medium","action":"review","keywords":["candidate"]}}
+```
+
+Drafts and staged rules do not affect live audits until published.
+
+### Pre-publish and publish
+
+* `POST /rules/prepublish-test`
+* `POST /rules/publish`
+* `POST /rules/staged/:id/publish`
+
+Optional request:
+
+```json
+{"sample_text":"text to simulate before publish"}
+```
+
+Pre-publish validation loads the candidate ruleset, compiles regex rules, runs conflict detection, and optionally runs sample simulation. Critical conflicts block publish and failed validation does not mutate active rules.
+
+### Release versions
+
+* `GET /rules/releases?limit=50&offset=0`
+* `GET /rules/releases/:version`
+* `GET /rules/releases/:from/:to/diff`
+* `POST /rules/releases/:version/rollback`
+
+Rollback validates the target snapshot, replaces the active YAML ruleset from that snapshot, reloads rules, and records a new release with status `rollback`.
+
+### Bulk operations
+
+* `POST /rules/bulk/enable`
+* `POST /rules/bulk/disable`
+
+Request:
+
+```json
+{"ids":["custom_keyword_001"],"category":"custom","severity":"medium","state":"published"}
+```
+
+`state` defaults to `published`. Explicit IDs are validated before writes. Published bulk changes reload the live matcher; draft/staged changes remain inactive until publish.
+
+### Conflict detection
+
+`POST /rules/conflicts?scope=published`
+
+Returns structured conflicts with `type`, `severity`, `affected_rule_ids`, `message`, and `suggested_action`. Detection includes duplicate IDs, duplicate keyword/domain/regex patterns, invalid regex, and draft/staged/published version drift for the same rule ID.
+
+### Hit simulation
+
+`POST /rules/simulate`
+
+```json
+{"text":"candidate text","scope":"staged","rule_ids":["candidate_001"],"max_hits":20}
+```
+
+Scopes: `published`, `staged`, `draft`, or `version` with `version:"v1"`. Sample text is not persisted by default and is capped to 10000 runes. The response includes matched rule IDs, hit positions, matched text, normalized match data, and decision summary.
+
+### Import batch rollback
+
+`POST /imports/batches/:batch_id/rollback`
+
+Rollback is available only when the stored batch metadata contains generated rule file paths. The endpoint removes only those safepath-validated YAML files, reloads rules, and records history/admin metadata. Older or incomplete batches return a clear `rollback unavailable` error instead of guessing.
+
+### Phase 11 SQLite tables
+
+The Phase 11 migration adds:
+
+* `rule_lifecycle`
+* `rule_releases`
+* `rule_release_items`
+* `rule_validation_runs`
+
+All SQL writes use parameters. Query pagination is capped through the shared storage limits.

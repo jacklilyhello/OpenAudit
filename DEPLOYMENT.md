@@ -144,3 +144,9 @@ Scanner policy: fix real gosec findings where practical. CodeQL may still requir
 ```sh
 $(go env GOPATH)/bin/gosec ./...
 ```
+
+## Phase 11 release state operations
+
+Back up `data/` and `storage/` together. Phase 11 stores draft/staged rule YAML, ruleset snapshots, and JSON release metadata under `data/.openaudit-release/`; SQLite mirrors lifecycle, release, validation, and admin metadata when the SQLite backend is available. Losing the hidden release directory does not stop live audits, but it removes ruleset rollback targets and draft/staged work.
+
+Before production publishes, use `POST /rules/prepublish-test` and `POST /rules/simulate` against staged rules. Use `GET /rules/releases` to verify version records after publish. Whole-ruleset rollback should be treated as an administrative operation and performed only from trusted admin networks or Cloudflare Access-protected sessions.

@@ -102,3 +102,11 @@ Scanner policy: fix real gosec findings where practical. CodeQL may still requir
 ```sh
 $(go env GOPATH)/bin/gosec ./...
 ```
+
+## Phase 11 rule release security
+
+Rule release files are identified by rule IDs and release versions, not caller-supplied paths. Drafts, staged rules, release metadata, and snapshots live under `data/.openaudit-release/` and are accessed through `internal/safepath`; traversal, NUL bytes, absolute escapes, and symlink escapes are rejected by the shared path model. The live loader skips hidden directories so staged rules and snapshots cannot become active accidentally.
+
+Publish validates the candidate ruleset before modifying active YAML. Failed validation does not mutate active rules. Publish writes snapshots and active custom rules with atomic file writes where practical, then reloads the matcher. Whole-ruleset rollback validates the target snapshot before activation and records a new release. Import batch rollback only removes generated YAML files listed in stored batch metadata; batches without sufficient metadata are rejected.
+
+Simulation caps sample text at 10000 runes and does not persist the sample by default. SQLite lifecycle, release, release item, and validation writes use parameterized SQL only. Scanner policy for Phase 11 remains: fix real issues, document precise safepath/SQL invariants for custom sanitizer false positives, and do not weaken the architecture for scanner-only zero findings.

@@ -13,6 +13,7 @@ type MiddlewareFunc func(*Context) bool
 type IRouter interface {
 	GET(string, HandlerFunc)
 	POST(string, HandlerFunc)
+	PUT(string, HandlerFunc)
 	PATCH(string, HandlerFunc)
 	DELETE(string, HandlerFunc)
 }
@@ -48,6 +49,7 @@ type Engine struct {
 func Default() *Engine                              { return &Engine{mux: http.NewServeMux()} }
 func (e *Engine) GET(path string, h HandlerFunc)    { e.handle("GET", path, h) }
 func (e *Engine) POST(path string, h HandlerFunc)   { e.handle("POST", path, h) }
+func (e *Engine) PUT(path string, h HandlerFunc)    { e.handle("PUT", path, h) }
 func (e *Engine) PATCH(path string, h HandlerFunc)  { e.handle("PATCH", path, h) }
 func (e *Engine) DELETE(path string, h HandlerFunc) { e.handle("DELETE", path, h) }
 func (e *Engine) handle(method, path string, h HandlerFunc) {

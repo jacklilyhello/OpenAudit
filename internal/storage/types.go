@@ -164,6 +164,69 @@ type AdminPage struct {
 	Page  Page             `json:"page"`
 }
 
+type RuleLifecycle struct {
+	ID           int64     `json:"id"`
+	RuleID       string    `json:"rule_id"`
+	State        string    `json:"state"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Actor        string    `json:"actor"`
+	Source       string    `json:"source"`
+	MetadataJSON string    `json:"metadata_json,omitempty"`
+}
+type LifecycleFilter struct {
+	RuleID, State string
+	Limit, Offset int
+}
+type LifecyclePage struct {
+	Items []RuleLifecycle `json:"items"`
+	Page  Page            `json:"page"`
+}
+
+type RuleRelease struct {
+	ID             int64     `json:"id"`
+	Version        string    `json:"version"`
+	CreatedAt      time.Time `json:"created_at"`
+	Actor          string    `json:"actor"`
+	Status         string    `json:"status"`
+	RuleCount      int       `json:"rule_count"`
+	AddedCount     int       `json:"added_count"`
+	UpdatedCount   int       `json:"updated_count"`
+	RemovedCount   int       `json:"removed_count"`
+	SnapshotPath   string    `json:"snapshot_path"`
+	ValidationJSON string    `json:"validation_json,omitempty"`
+	MetadataJSON   string    `json:"metadata_json,omitempty"`
+}
+type ReleaseFilter struct {
+	Status        string
+	Limit, Offset int
+}
+type ReleasePage struct {
+	Items []RuleRelease `json:"items"`
+	Page  Page          `json:"page"`
+}
+type RuleReleaseItem struct {
+	ID           int64  `json:"id"`
+	Version      string `json:"version"`
+	RuleID       string `json:"rule_id"`
+	Operation    string `json:"operation"`
+	BeforeHash   string `json:"before_hash"`
+	AfterHash    string `json:"after_hash"`
+	FilePath     string `json:"file_path"`
+	MetadataJSON string `json:"metadata_json,omitempty"`
+}
+type RuleValidationRun struct {
+	ID             int64     `json:"id"`
+	RunID          string    `json:"run_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	Actor          string    `json:"actor"`
+	TargetState    string    `json:"target_state"`
+	TargetVersion  string    `json:"target_version"`
+	Status         string    `json:"status"`
+	ConflictsJSON  string    `json:"conflicts_json,omitempty"`
+	SimulationJSON string    `json:"simulation_json,omitempty"`
+	MetadataJSON   string    `json:"metadata_json,omitempty"`
+}
+
 type Store interface {
 	Close() error
 	InsertAuditLog(context.Context, AuditLog, []engine.Hit) (int64, error)
@@ -175,4 +238,10 @@ type Store interface {
 	QueryImportBatches(context.Context, BatchFilter) (BatchPage, error)
 	InsertAdminOperation(context.Context, AdminOperation) error
 	QueryAdminOperations(context.Context, AdminFilter) (AdminPage, error)
+	UpsertRuleLifecycle(context.Context, RuleLifecycle) error
+	QueryRuleLifecycle(context.Context, LifecycleFilter) (LifecyclePage, error)
+	InsertRuleRelease(context.Context, RuleRelease, []RuleReleaseItem) error
+	QueryRuleReleases(context.Context, ReleaseFilter) (ReleasePage, error)
+	GetRuleRelease(context.Context, string) (RuleRelease, []RuleReleaseItem, bool, error)
+	InsertRuleValidationRun(context.Context, RuleValidationRun) error
 }
