@@ -1,5 +1,7 @@
 # OpenAudit API
 
+See [README.md](README.md) for the product overview, [CHANGELOG.md](CHANGELOG.md) for release notes, and [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md) for implementation history.
+
 Base URL for local development: `http://localhost:8080`.
 
 ## API keys

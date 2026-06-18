@@ -1,5 +1,7 @@
 # Security Policy
 
+See [README.md](README.md) for the product overview, [DEPLOYMENT.md](DEPLOYMENT.md) for production deployment guidance, and [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md) for phase implementation history.
+
 ## Reporting vulnerabilities
 
 Please report vulnerabilities privately through the repository owner's preferred private contact channel. Do not open public issues containing exploit details, real API keys, private rulesets, audit logs, or user content.
