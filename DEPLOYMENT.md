@@ -139,7 +139,7 @@ Pagination parameters are validated and capped. SQL filters use parameterized ar
 
 Legacy JSONL files remain compatible for audit logs, rule history, and import batch history. Phase 10 mirrors new writes into SQLite where practical but does not remove JSONL files and does not move YAML rules into the database.
 
-Scanner policy: fix real gosec findings where practical. CodeQL may still require manual review for custom safepath sanitizer flows around database/export paths; the invariant is that database paths are relative names resolved beneath a safepath-validated storage root, and SQL WHERE/ORDER fragments are assembled only from fixed code constants with request values passed as parameters. Run gosec locally with:
+Scanner policy: gosec is a SARIF-producing blocking Phase 16 release-baseline security gate. Fix real gosec findings where practical. False positives should be handled only with narrow, local documentation of the exact invariant; broad suppressions should be avoided. CodeQL may still require manual review for custom safepath sanitizer flows around database/export paths; the invariant is that database paths are relative names resolved beneath a safepath-validated storage root, and SQL WHERE/ORDER fragments are assembled only from fixed code constants with request values passed as parameters. Run gosec locally with:
 
 ```sh
 $(go env GOPATH)/bin/gosec ./...
