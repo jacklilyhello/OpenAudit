@@ -1,0 +1,48 @@
+# Example OpenAudit systemd unit for VPS/bare-metal production deployments.
+# Copy to /etc/systemd/system/openaudit.service and review paths before enabling.
+# Put secrets such as OPENAUDIT_API_KEYS and OPENAUDIT_ADMIN_API_KEY in
+# /etc/openaudit/openaudit.env with root/openaudit-readable permissions; do not
+# place secrets in this unit file.
+[Unit]
+Description=OpenAudit content audit service
+Documentation=https://github.com/jacklilyhello/OpenAudit
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openaudit
+Group=openaudit
+WorkingDirectory=/var/lib/openaudit
+Environment=OPENAUDIT_ENV=production
+EnvironmentFile=-/etc/openaudit/openaudit.env
+ExecStart=/usr/local/bin/openaudit --config /etc/openaudit/config.yml
+Restart=on-failure
+RestartSec=5s
+
+# Filesystem access: keep the system mostly read-only while allowing runtime
+# writes to OpenAudit storage/configured data locations and operator-managed
+# external rules. Adjust these paths if your config uses different roots.
+ReadWritePaths=/var/lib/openaudit /var/log/openaudit /etc/openaudit
+ReadOnlyPaths=/usr/local/bin/openaudit /etc/openaudit/config.yml
+StateDirectory=openaudit
+LogsDirectory=openaudit
+UMask=0077
+
+# Reasonable hardening that still allows SQLite, storage files, configs, and logs.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

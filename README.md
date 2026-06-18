@@ -53,6 +53,8 @@ docker compose up --build
 
 The compose file maps `8080:8080`, mounts `./data`, `./storage`, and `./config.example.yml`, and runs `/app/openaudit --config /app/config.yml`.
 
+Production examples are available in [DEPLOYMENT.md](DEPLOYMENT.md), including [`docker-compose.prod.example.yml`](docker-compose.prod.example.yml), [`config.production.example.yml`](config.production.example.yml), and the [Cloudflare Access deployment notes](docs/cloudflare-access.md). Do not use the local development Compose file as a VPS production template.
+
 ## Configuration and API keys
 
 `config.example.yml` is development-safe and includes a local `dev-key`. Production deployments must provide real API keys from environment variables or secret stores, not committed files. Future production variables are documented as:
