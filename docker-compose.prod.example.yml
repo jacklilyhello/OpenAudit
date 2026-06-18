@@ -1,0 +1,42 @@
+# OpenAudit production Docker Compose example.
+#
+# Intended production model:
+#   Cloudflare Access -> Cloudflare Tunnel -> 127.0.0.1:8080 on VPS -> OpenAudit
+#
+# Do not expose OpenAudit directly on all public interfaces. Cloudflare Tunnel
+# should target the local origin service at: http://127.0.0.1:8080
+#
+# Provide real secrets from your shell, a compose env_file that is not committed,
+# or a secret manager. Never commit production API keys or provider secrets.
+services:
+  openaudit:
+    build: .
+    image: openaudit:production
+    restart: unless-stopped
+    environment:
+      OPENAUDIT_ENV: production
+      # Required in production. Example shell export:
+      #   export OPENAUDIT_API_KEYS="replace-with-long-random-key"
+      OPENAUDIT_API_KEYS: ${OPENAUDIT_API_KEYS:?set OPENAUDIT_API_KEYS outside compose}
+      # Required for admin/management access. Example shell export:
+      #   export OPENAUDIT_ADMIN_API_KEY="replace-with-different-long-random-admin-key"
+      OPENAUDIT_ADMIN_API_KEY: ${OPENAUDIT_ADMIN_API_KEY:?set OPENAUDIT_ADMIN_API_KEY outside compose}
+      # Optional provider keys are referenced by config.production.example.yml
+      # through provider api_key_env names only. Set them outside compose if you
+      # intentionally enable an AI provider.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      # Localhost-only origin for Cloudflare Tunnel. Do NOT use "8080:8080" in production.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      # Production config is read-only inside the container.
+      - ./config.production.example.yml:/app/config.yml:ro
+      # Persist operator-managed rules and runtime state. Keep permissions restricted on the VPS.
+      - ./data:/app/data
+      - ./storage:/app/storage
+      - ./external-rules:/app/external-rules
+    command: ["--config", "/app/config.yml"]

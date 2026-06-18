@@ -1,5 +1,25 @@
 # OpenAudit Deployment
 
+
+## Production examples
+
+Dedicated Phase 16 production deployment examples are available:
+
+- [`docker-compose.prod.example.yml`](docker-compose.prod.example.yml) — production Compose example with localhost-only port binding.
+- [`config.production.example.yml`](config.production.example.yml) — conservative production config with management API key protection and production-safe logging defaults.
+- [`deploy/systemd/openaudit.service`](deploy/systemd/openaudit.service) — example systemd unit for VPS/bare-metal deployments.
+- [`docs/cloudflare-access.md`](docs/cloudflare-access.md) — Cloudflare Access and Tunnel production model documentation.
+
+`docker-compose.yml` is local/development only. It intentionally uses `8080:8080` for convenient local testing and must not be copied directly to a VPS production deployment. Production deployments should bind OpenAudit to localhost only, for example `127.0.0.1:8080:8080`, and put Cloudflare Access and Cloudflare Tunnel in front of the service:
+
+```text
+Cloudflare Access -> Cloudflare Tunnel -> 127.0.0.1:8080 on VPS -> OpenAudit
+```
+
+Do not expose `/admin` directly to the public internet, and do not point a normal public A/AAAA admin DNS record directly at the VPS origin. Configure Cloudflare Tunnel to route to `http://127.0.0.1:8080`, then set production API keys outside git with `OPENAUDIT_API_KEYS` and `OPENAUDIT_ADMIN_API_KEY`.
+
+Production examples avoid logging full raw request text by default because request text may contain sensitive content. Operators may enable raw request text logging only intentionally after reviewing privacy, access-control, backup, and retention obligations. AI prompt and raw provider response logging remain disabled by default.
+
 ## Local `go run`
 
 ```bash
@@ -23,7 +43,7 @@ docker run --rm -p 8080:8080 \
 
 ## Docker Compose
 
-`docker-compose.yml` is for local/development use:
+`docker-compose.yml` is for local/development use only. Do not use it as a VPS production template because it exposes `8080:8080` for local convenience:
 
 ```bash
 docker compose up --build
