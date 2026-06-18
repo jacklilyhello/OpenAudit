@@ -6,7 +6,7 @@ BIN := $(BIN_DIR)/$(APP_NAME)
 IMAGE := openaudit:local
 GO_FILES := $(shell find . -name '*.go' -not -path './vendor/*')
 
-.PHONY: help fmt fmt-check vet test build run clean ci govulncheck gosec docker-build docker-run smoke
+.PHONY: help fmt fmt-check vet test build run clean ci govulncheck gosec docker-build docker-run smoke e2e
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "OpenAudit development targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -51,3 +51,6 @@ docker-run: ## Run local Docker container
 
 smoke: ## Run local smoke test script
 	./scripts/smoke.sh
+
+e2e: ## Run deterministic end-to-end verification
+	./scripts/e2e.sh
