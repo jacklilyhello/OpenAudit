@@ -39,9 +39,9 @@ govulncheck: ## Install if needed and run govulncheck
 	@command -v govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
 	govulncheck ./...
 
-gosec: ## Install if needed and run gosec in non-blocking report mode
+gosec: ## Install if needed and run blocking gosec security scan
 	@command -v gosec >/dev/null 2>&1 || go install github.com/securego/gosec/v2/cmd/gosec@latest
-	gosec -no-fail ./...
+	gosec ./...
 
 docker-build: ## Build local Docker image
 	docker build -t $(IMAGE) .

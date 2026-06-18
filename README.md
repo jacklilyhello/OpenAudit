@@ -96,7 +96,7 @@ GitHub workflows include:
 
 - CI: gofmt check, `go vet ./...`, `go test ./...`, `go build ./...`, and smoke test.
 - Govulncheck: CLI-based reachable vulnerability scanning on push, PR, weekly schedule, and manual dispatch.
-- Gosec: SARIF-producing non-blocking security scan for early development visibility.
+- Gosec: SARIF-producing blocking Phase 16 release-baseline security gate. Real findings should be fixed where practical; false positives should be documented narrowly with exact invariants, and broad suppressions should be avoided.
 - CodeQL: Go analysis with security and quality query suites.
 - Release build: manual Linux amd64 and arm64 artifact builds.
 
@@ -174,7 +174,7 @@ Provider adapters are modular and environment-keyed: OpenAI, DeepSeek, Qwen, Gem
 
 By default AI can recommend `review`, `allow`, `warn`, or `block_recommended`. AI hard-block behavior is intentionally not enabled by default; `ai.hard_block_enabled` must be explicitly opted into before a provider action of `block` is preserved as a hard block recommendation. Prompt/raw response logging is disabled by default, and SQLite AI audit logs store compact metadata such as provider, model, status, recommendation, token usage, estimated cost, latency, cache hit, and error class.
 
-Scanner policy: fix real gosec findings where practical. CodeQL may still require manual review for custom safepath sanitizer flows around database/export paths; the invariant is that database paths are relative names resolved beneath a safepath-validated storage root, and SQL WHERE/ORDER fragments are assembled only from fixed code constants with request values passed as parameters. Run gosec locally with:
+Scanner policy: gosec is a SARIF-producing blocking Phase 16 release-baseline security gate. Fix real gosec findings where practical. False positives should be handled only with narrow, local documentation of the exact invariant; broad suppressions should be avoided. CodeQL may still require manual review for custom safepath sanitizer flows around database/export paths; the invariant is that database paths are relative names resolved beneath a safepath-validated storage root, and SQL WHERE/ORDER fragments are assembled only from fixed code constants with request values passed as parameters. Run gosec locally with:
 
 ```sh
 $(go env GOPATH)/bin/gosec ./...

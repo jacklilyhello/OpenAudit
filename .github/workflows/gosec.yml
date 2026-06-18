@@ -32,8 +32,8 @@ jobs:
 
       - name: Run gosec and generate SARIF
         run: |
-          echo "Phase 5 runs gosec with -no-fail so findings are reported without blocking early development. Remove -no-fail later to make gosec blocking."
-          gosec -no-fail -fmt sarif -out gosec-results.sarif ./...
+          echo "gosec is a blocking Phase 16 release-baseline security gate. Findings fail the workflow unless fixed or intentionally handled with a narrow documented invariant; broad suppressions are not acceptable."
+          gosec -fmt sarif -out gosec-results.sarif ./...
 
       - name: Upload SARIF report
         uses: github/codeql-action/upload-sarif@v4
