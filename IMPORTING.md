@@ -1,5 +1,7 @@
 # Importing Rules
 
+See [README.md](README.md) for the product overview, [API.md](API.md) for rule and import endpoints, and [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md) for historical import implementation notes.
+
 OpenAudit commits only a small built-in demo ruleset under `data/` for development and tests. Production and research deployments should import or mount external rulesets separately.
 
 ## External rules strategy

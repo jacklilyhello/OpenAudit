@@ -1,5 +1,7 @@
 # OpenAudit Deployment
 
+See [README.md](README.md) for the product overview, [SECURITY.md](SECURITY.md) for security policy, and [CHANGELOG.md](CHANGELOG.md) for release-note level changes.
+
 
 ## Production examples
 
