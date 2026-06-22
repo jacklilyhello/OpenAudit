@@ -1064,3 +1064,20 @@ Files:
 
 Notes:
 - Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.
+
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Fix WritePairAtomic backup lifecycle so failed backup restoration preserves retained recovery backups and reports their paths.
+- Add deterministic tests for retained pack/report backups, both-restore failure, and post-commit backup cleanup failure.
+
+Files:
+- internal/bundled/...
+- docs/bundled-rules-phase-a.md
+- CODEX.md
+
+Notes:
+- Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.

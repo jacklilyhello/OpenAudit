@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -558,5 +559,153 @@ func TestReadLimitedLocalFile(t *testing.T) {
 	}
 	if _, err := ReadLimitedLocalFile(p, 2); err == nil {
 		t.Fatal("oversized accepted")
+	}
+}
+
+func TestWritePairAtomicRetainsFailedRestoreBackups(t *testing.T) {
+	dir := t.TempDir()
+	pack := filepath.Join(dir, "pack.gz")
+	report := filepath.Join(dir, "report.json")
+	oldOps := pairOps
+	defer func() { pairOps = oldOps }()
+	setup := func() {
+		pairOps = oldOps
+		os.WriteFile(pack, []byte("oldp"), 0600)
+		os.WriteFile(report, []byte("oldr"), 0600)
+	}
+	backupFiles := func() []string {
+		entries, _ := os.ReadDir(dir)
+		out := []string{}
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".bak") {
+				out = append(out, filepath.Join(dir, e.Name()))
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+
+	setup()
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(new, "pack.gz") && strings.HasSuffix(old, ".bak") {
+			return os.ErrPermission
+		}
+		if strings.HasSuffix(new, "report.json") && strings.HasSuffix(old, ".tmp") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
+	}
+	err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr"))
+	if err == nil || !strings.Contains(err.Error(), "retained pack backup at") {
+		t.Fatalf("pack restore retention not reported: %v", err)
+	}
+	baks := backupFiles()
+	if len(baks) != 1 {
+		t.Fatalf("expected one retained pack backup, got %v", baks)
+	}
+	if b, _ := os.ReadFile(baks[0]); string(b) != "oldp" {
+		t.Fatalf("pack backup content=%q", string(b))
+	}
+	if b, _ := os.ReadFile(report); string(b) != "oldr" {
+		t.Fatalf("report not restored: %q", string(b))
+	}
+
+	setup()
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(new, "report.json") && strings.HasSuffix(old, ".bak") {
+			return os.ErrPermission
+		}
+		if strings.HasSuffix(new, "report.json") && strings.HasSuffix(old, ".tmp") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
+	}
+	err = WritePairAtomic(pack, []byte("newp"), report, []byte("newr"))
+	if err == nil || !strings.Contains(err.Error(), "retained report backup at") {
+		t.Fatalf("report restore retention not reported: %v", err)
+	}
+	baks = backupFiles()
+	foundReport := false
+	for _, bak := range baks {
+		if b, _ := os.ReadFile(bak); string(b) == "oldr" {
+			foundReport = true
+		}
+	}
+	if !foundReport {
+		t.Fatalf("report backup not retained with old data: %v", baks)
+	}
+	if b, _ := os.ReadFile(pack); string(b) != "oldp" {
+		t.Fatalf("pack not restored: %q", string(b))
+	}
+}
+
+func TestWritePairAtomicRetainsBothFailedRestoreBackups(t *testing.T) {
+	dir := t.TempDir()
+	pack := filepath.Join(dir, "pack.gz")
+	report := filepath.Join(dir, "report.json")
+	os.WriteFile(pack, []byte("oldp"), 0600)
+	os.WriteFile(report, []byte("oldr"), 0600)
+	oldOps := pairOps
+	defer func() { pairOps = oldOps }()
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(old, ".bak") {
+			return os.ErrPermission
+		}
+		if strings.HasSuffix(new, "report.json") && strings.HasSuffix(old, ".tmp") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
+	}
+	err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr"))
+	if err == nil || !strings.Contains(err.Error(), "retained pack backup at") || !strings.Contains(err.Error(), "retained report backup at") {
+		t.Fatalf("retained backups not reported: %v", err)
+	}
+	entries, _ := os.ReadDir(dir)
+	gotP, gotR := false, false
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".bak") {
+			b, _ := os.ReadFile(filepath.Join(dir, e.Name()))
+			gotP = gotP || string(b) == "oldp"
+			gotR = gotR || string(b) == "oldr"
+		}
+	}
+	if !gotP || !gotR {
+		t.Fatalf("missing retained backups pack=%v report=%v", gotP, gotR)
+	}
+}
+
+func TestWritePairAtomicBackupCleanupFailureKeepsNewPair(t *testing.T) {
+	dir := t.TempDir()
+	pack := filepath.Join(dir, "pack.gz")
+	report := filepath.Join(dir, "report.json")
+	os.WriteFile(pack, []byte("oldp"), 0600)
+	os.WriteFile(report, []byte("oldr"), 0600)
+	oldOps := pairOps
+	defer func() { pairOps = oldOps }()
+	pairOps.remove = func(path string) error {
+		if strings.HasSuffix(path, ".bak") {
+			return os.ErrPermission
+		}
+		return os.Remove(path)
+	}
+	err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr"))
+	if err == nil || !strings.Contains(err.Error(), "commit succeeded") || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("cleanup failure not reported: %v", err)
+	}
+	if b, _ := os.ReadFile(pack); string(b) != "newp" {
+		t.Fatalf("new pack missing: %q", string(b))
+	}
+	if b, _ := os.ReadFile(report); string(b) != "newr" {
+		t.Fatalf("new report missing: %q", string(b))
+	}
+	entries, _ := os.ReadDir(dir)
+	backups := 0
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".bak") {
+			backups++
+		}
+	}
+	if backups == 0 {
+		t.Fatal("failed-to-delete backup was not retained")
 	}
 }

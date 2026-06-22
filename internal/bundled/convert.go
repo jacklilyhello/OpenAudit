@@ -938,14 +938,14 @@ func WritePairAtomic(packPath string, packData []byte, reportPath string, report
 		_ = pairOps.rm(packTmp)
 		return fmt.Errorf("stage report: %w", err)
 	}
-	packBak := packTmp + ".bak"
-	reportBak := reportTmp + ".bak"
-	cleanup := []string{packTmp, reportTmp, packBak, reportBak}
+	stageCleanup := []string{packTmp, reportTmp}
 	defer func() {
-		for _, p := range cleanup {
+		for _, p := range stageCleanup {
 			_ = pairOps.rm(p)
 		}
 	}()
+	packBak := packTmp + ".bak"
+	reportBak := reportTmp + ".bak"
 	if b, err := pairOps.rf(packTmp); err != nil || !bytes.Equal(b, packData) {
 		if err != nil {
 			return fmt.Errorf("validate staged pack: %w", err)
@@ -958,9 +958,10 @@ func WritePairAtomic(packPath string, packData []byte, reportPath string, report
 		}
 		return errors.New("validate staged report: content mismatch")
 	}
-	packExisted, reportExisted := false, false
 	packBackedUp, reportBackedUp := false, false
 	packInstalled, reportInstalled := false, false
+	packRestored, reportRestored := false, false
+	commitSucceeded, rollbackCompleted := false, false
 	packPathResolved, reportPathResolved := packTarget.String(), reportTarget.String()
 	rollback := func(cause error) error {
 		rbErrs := []string{}
@@ -976,24 +977,32 @@ func WritePairAtomic(packPath string, packData []byte, reportPath string, report
 		}
 		if packBackedUp {
 			if err := pairOps.rn(packBak, packPathResolved); err != nil {
-				rbErrs = append(rbErrs, "restore pack: "+err.Error())
+				rbErrs = append(rbErrs, "restore pack: "+err.Error()+"; retained pack backup at "+packBak)
+			} else {
+				packRestored = true
+				packBackedUp = false
 			}
 		}
 		if reportBackedUp {
 			if err := pairOps.rn(reportBak, reportPathResolved); err != nil {
-				rbErrs = append(rbErrs, "restore report: "+err.Error())
+				rbErrs = append(rbErrs, "restore report: "+err.Error()+"; retained report backup at "+reportBak)
+			} else {
+				reportRestored = true
+				reportBackedUp = false
 			}
 		}
 		if err := pairOps.sd(parent); err != nil {
 			rbErrs = append(rbErrs, "sync parent: "+err.Error())
 		}
+		rollbackCompleted = len(rbErrs) == 0
+		_ = packRestored
+		_ = reportRestored
 		if len(rbErrs) > 0 {
 			return fmt.Errorf("%w; rollback failed: %s", cause, strings.Join(rbErrs, "; "))
 		}
 		return cause
 	}
 	if _, err := os.Stat(packPathResolved); err == nil {
-		packExisted = true
 		if err := pairOps.rn(packPathResolved, packBak); err != nil {
 			return fmt.Errorf("backup pack: %w", err)
 		}
@@ -1005,7 +1014,6 @@ func WritePairAtomic(packPath string, packData []byte, reportPath string, report
 		return err
 	}
 	if _, err := os.Stat(reportPathResolved); err == nil {
-		reportExisted = true
 		if err := pairOps.rn(reportPathResolved, reportBak); err != nil {
 			return rollback(fmt.Errorf("backup report: %w", err))
 		}
@@ -1016,8 +1024,6 @@ func WritePairAtomic(packPath string, packData []byte, reportPath string, report
 	} else if !os.IsNotExist(err) {
 		return rollback(err)
 	}
-	_ = packExisted
-	_ = reportExisted
 	if err := pairOps.rn(packTmp, packPathResolved); err != nil {
 		return rollback(fmt.Errorf("replace pack: %w", err))
 	}
@@ -1031,6 +1037,30 @@ func WritePairAtomic(packPath string, packData []byte, reportPath string, report
 	reportInstalled = true
 	if err := pairOps.sd(parent); err != nil {
 		return rollback(fmt.Errorf("sync after report replace: %w", err))
+	}
+	commitSucceeded = true
+	cleanupErrs := []string{}
+	if packBackedUp {
+		if err := pairOps.rm(packBak); err != nil && !os.IsNotExist(err) {
+			cleanupErrs = append(cleanupErrs, "remove stale pack backup at "+packBak+": "+err.Error())
+		} else {
+			packBackedUp = false
+		}
+	}
+	if reportBackedUp {
+		if err := pairOps.rm(reportBak); err != nil && !os.IsNotExist(err) {
+			cleanupErrs = append(cleanupErrs, "remove stale report backup at "+reportBak+": "+err.Error())
+		} else {
+			reportBackedUp = false
+		}
+	}
+	if err := pairOps.sd(parent); err != nil {
+		cleanupErrs = append(cleanupErrs, "sync parent after backup cleanup: "+err.Error())
+	}
+	_ = commitSucceeded
+	_ = rollbackCompleted
+	if len(cleanupErrs) > 0 {
+		return fmt.Errorf("pack/report commit succeeded; stale backup cleanup failed: %s", strings.Join(cleanupErrs, "; "))
 	}
 	return nil
 }
