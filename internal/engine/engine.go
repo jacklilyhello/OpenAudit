@@ -15,16 +15,16 @@ import (
 )
 
 type Engine struct {
-	mu        sync.RWMutex
-	root      string
-	set       rules.Set
-	keyword   matcher.Matcher
-	regex     matcher.Matcher
-	domain    matcher.Matcher
-	pinyin    matcher.Matcher
-	homophone matcher.Matcher
-	bundled   bundled.RuntimeStats
-	options   Options
+	mu            sync.RWMutex
+	root          string
+	set           rules.Set
+	keyword       matcher.Matcher
+	regex         matcher.Matcher
+	domain        matcher.Matcher
+	pinyin        matcher.Matcher
+	homophone     matcher.Matcher
+	bundled       bundled.RuntimeStats
+	bundledConfig *config.BundledRulesConfig
 }
 
 type Options struct {
@@ -33,8 +33,16 @@ type Options struct {
 
 func New(root string) (*Engine, error) { return NewWithOptions(root, Options{}) }
 func NewWithOptions(root string, opt Options) (*Engine, error) {
-	e := &Engine{root: root, options: opt}
+	e := &Engine{root: root, bundledConfig: cloneBundledRulesConfig(opt.BundledRules)}
 	return e, e.Reload()
+}
+
+func cloneBundledRulesConfig(in *config.BundledRulesConfig) *config.BundledRulesConfig {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
 }
 func Prepare(root string) (rules.Set, []matcher.Matcher, bundled.RuntimeStats, error) {
 	return PrepareWithOptions(root, Options{})
@@ -76,7 +84,7 @@ func PrepareSet(set rules.Set) ([]matcher.Matcher, error) {
 	return ms, nil
 }
 func (e *Engine) Reload() error {
-	set, ms, bst, err := PrepareWithOptions(e.root, e.options)
+	set, ms, bst, err := PrepareWithOptions(e.root, Options{BundledRules: e.bundledConfig})
 	if err != nil {
 		return err
 	}

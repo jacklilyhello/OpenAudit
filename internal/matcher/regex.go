@@ -50,7 +50,7 @@ func MatchRegex(text string, rs []RegexRule) []Hit {
 				m := text[loc[0]:loc[1]]
 				s, e := byteToRuneOffsets(text, loc[0], loc[1])
 				r := rr.Rule
-				hits = append(hits, Hit{Type: "regex", RuleID: r.ID, Category: r.Category, RiskLevel: r.RiskLevel, Action: r.Action, Match: m, NormalizedMatch: m, Start: s, End: e, Score: risk.Score(r.RiskLevel, r.Score), Description: r.Description, Source: r.Source, Tags: r.Tags})
+				hits = append(hits, Hit{Type: "regex", RuleID: r.ID, Category: r.Category, RiskLevel: r.RiskLevel, Action: r.Action, Match: m, NormalizedMatch: m, Start: s, End: e, Score: risk.Score(r.RiskLevel, r.Score), Description: r.Description, Source: r.Source, Tags: r.Tags, Provenance: r.Provenance, Behavior: r.Behavior})
 			}
 		}
 	}

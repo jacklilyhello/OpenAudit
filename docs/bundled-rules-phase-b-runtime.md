@@ -19,11 +19,29 @@ go run ./cmd/bundled-rules convert \
   --input ./external-rules/SensitiveWords/G79SensitiveWords.json \
   --output ./data/bundled/netease-g79.json.gz \
   --report ./data/bundled/netease-g79.report.json \
-  --source-repo https://github.com/netease-im/NIM_iOS_UIKit \
-  --source-commit <40-character-upstream-commit>
+  --source-repository https://github.com/daijunhaoMinecraft/NeteaseSensitiveWordsProject \
+  --source-commit <40-character-upstream-commit> \
+  --source-file-path SensitiveWords/G79SensitiveWords.json \
+  --timestamp 2026-01-01T00:00:00Z \
+  --license GPL-3.0-only
 ```
 
-Repeat with `--dataset x19` and `--output ./data/bundled/netease-x19.json.gz` for X19.
+For X19, use the same required flags with the X19 dataset, input, output, report, and source file path:
+
+```sh
+go run ./cmd/bundled-rules convert \
+  --dataset x19 \
+  --input ./external-rules/SensitiveWords/X19SensitiveWords.json \
+  --output ./data/bundled/netease-x19.json.gz \
+  --report ./data/bundled/netease-x19.report.json \
+  --source-repository https://github.com/daijunhaoMinecraft/NeteaseSensitiveWordsProject \
+  --source-commit <40-character-upstream-commit> \
+  --source-file-path SensitiveWords/X19SensitiveWords.json \
+  --timestamp 2026-01-01T00:00:00Z \
+  --license GPL-3.0-only
+```
+
+`--timestamp` must be a canonical reproducible UTC RFC3339 value with a `Z` suffix. Replace the sample timestamp with the source snapshot timestamp used by your release process.
 
 ## Enable runtime loading
 
@@ -63,7 +81,7 @@ Runtime rejects traversal, symlink escape, unexpected file types, oversized comp
 
 ## Statistics
 
-Rules statistics remain backward-compatible and add `bundled_rules` with provider status, selected mode, dataset enabled/loaded state, examined and activated rule counts, configuration-disabled counts, RE2-compatible/incompatible counts, group counts, source commit, source input SHA-256, and license identifier. Complete regex content and raw unsafe validation errors are not exposed.
+Rules statistics remain backward-compatible and add `bundled_rules` with provider status, selected mode, dataset enabled/loaded state, examined and activated rule counts, configuration-disabled counts, RE2-compatible/incompatible counts, group counts, source commit, source input SHA-256, and license identifier. Compatibility counters cover all examined Pack rules from enabled datasets before group filtering; `configuration_disabled_rules` counts RE2-compatible rules skipped only because their deployment group is disabled. Complete regex content and raw unsafe validation errors are not exposed.
 
 ## Distribution and license scope
 

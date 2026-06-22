@@ -168,7 +168,7 @@ func readPack(root safepath.Root, filename string) (Pack, error) {
 
 func convertRule(pr PackRule) rules.Rule {
 	en := true
-	return rules.Rule{ID: pr.ID, State: "published", Type: "regex", Category: pr.Category, RiskLevel: pr.RiskLevel, Action: pr.Action, Score: pr.Score, Description: pr.Description, Source: pr.Source, Tags: append([]string(nil), pr.Tags...), Enabled: &en, Patterns: []string{pr.OriginalRegex}, Path: filepath.Join("bundled", pr.Provider, pr.Dataset, pr.Group, pr.ID)}
+	return rules.Rule{ID: pr.ID, State: "published", Type: "regex", Category: pr.Category, RiskLevel: pr.RiskLevel, Action: pr.Action, Score: pr.Score, Description: pr.Description, Source: pr.Source, Tags: append([]string(nil), pr.Tags...), Provenance: &rules.RuleProvenance{Provider: pr.Provider, Dataset: pr.Dataset, Group: pr.Group, UpstreamID: pr.UpstreamID}, Behavior: &rules.RuleBehavior{UpstreamBehavior: pr.Metadata.UpstreamBehavior, ReplacementTextAvailable: pr.Metadata.ReplacementTextAvailable}, Enabled: &en, Patterns: []string{pr.OriginalRegex}, Path: filepath.Join("bundled", pr.Provider, pr.Dataset, pr.Group, pr.ID)}
 }
 func selectedDatasets(d config.NetEaseDatasetsConfig) []string {
 	var out []string
