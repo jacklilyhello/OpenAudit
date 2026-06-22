@@ -12,6 +12,8 @@ import (
 
 	"github.com/openaudit/openaudit/internal/bundled"
 	"github.com/openaudit/openaudit/internal/config"
+	"github.com/openaudit/openaudit/internal/model"
+	"github.com/openaudit/openaudit/internal/rules"
 )
 
 const testSHA = "0123456789abcdef0123456789abcdef01234567"
@@ -389,4 +391,169 @@ func TestBundledTypedProvenanceBehaviorAndHitMetadata(t *testing.T) {
 	if len(hits) == 0 || hits[0].Provenance == nil || hits[0].Behavior == nil || hits[0].Provenance.UpstreamID != "42" || hits[0].Behavior.UpstreamBehavior != "replace" {
 		t.Fatalf("hit metadata not preserved: %#v", hits)
 	}
+}
+
+func TestBundledRulesSnapshotMutationIsolation(t *testing.T) {
+	local := t.TempDir()
+	write(t, filepath.Join(local, "mapping.yml"), `id: mapping
+type: pinyin
+category: c
+mapping:
+  原文: [yuanwen]
+`)
+	dir := t.TempDir()
+	makePack(t, dir, "g79", `{"regex":{"replace":{"42":"replacehit"}},"settings":{}}`)
+	cfg := bundledCfg(dir)
+	cfg.NetEase.Groups.Replace = true
+	e, err := NewWithOptions(local, Options{BundledRules: &cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules1 := e.Rules()
+	var bundledRule, mappingRule *rules.Rule
+	for i := range rules1 {
+		if rules1[i].Provenance != nil {
+			bundledRule = &rules1[i]
+		}
+		if rules1[i].ID == "mapping" {
+			mappingRule = &rules1[i]
+		}
+	}
+	if bundledRule == nil || bundledRule.Behavior == nil || mappingRule == nil || len(mappingRule.Mapping["原文"]) == 0 {
+		t.Fatalf("missing snapshot rules: %#v", rules1)
+	}
+	bundledRule.Provenance.Provider = "mutated"
+	bundledRule.Behavior.UpstreamBehavior = "mutated"
+	bundledRule.Behavior.ReplacementTextAvailable = true
+	bundledRule.Tags[0] = "mutated"
+	bundledRule.Patterns[0] = "mutated"
+	enabled := false
+	bundledRule.Enabled = &enabled
+	mappingRule.Mapping["原文"][0] = "mutated"
+	rules2 := e.Rules()
+	for _, r := range rules2 {
+		if r.Provenance != nil && (r.Provenance.Provider != bundled.ProviderNetEase || r.Behavior.UpstreamBehavior != "replace" || r.Behavior.ReplacementTextAvailable || r.Tags[0] == "mutated" || r.Patterns[0] != "replacehit" || !r.IsEnabled()) {
+			t.Fatalf("bundled rule snapshot mutation leaked: %#v", r)
+		}
+		if r.ID == "mapping" && r.Mapping["原文"][0] != "yuanwen" {
+			t.Fatalf("mapping snapshot mutation leaked: %#v", r.Mapping)
+		}
+	}
+}
+
+func TestBundledAuditHitMutationIsolationAndExplanationTrimming(t *testing.T) {
+	local := t.TempDir()
+	dir := t.TempDir()
+	makePack(t, dir, "g79", `{"regex":{"replace":{"42":"replacehit"}},"settings":{}}`)
+	cfg := bundledCfg(dir)
+	cfg.NetEase.Groups.Replace = true
+	e, err := NewWithOptions(local, Options{BundledRules: &cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultRes := e.Audit("replacehit", true)
+	if len(defaultRes.Hits) == 0 || defaultRes.Hits[0].Provenance == nil || defaultRes.Hits[0].Behavior == nil {
+		t.Fatalf("default audit missing metadata: %#v", defaultRes.Hits)
+	}
+	defaultRes.Hits[0].Provenance.Provider = "mutated"
+	defaultRes.Hits[0].Behavior.UpstreamBehavior = "mutated"
+	again := e.Audit("replacehit", true)
+	if again.Hits[0].Provenance.Provider != bundled.ProviderNetEase || again.Hits[0].Behavior.UpstreamBehavior != "replace" {
+		t.Fatalf("hit mutation leaked: %#v", again.Hits[0])
+	}
+	include := true
+	withExp := e.AuditWithOptions("replacehit", model.AuditOptions{Normalize: &include, IncludeExplanations: &include})
+	if withExp.Hits[0].Provenance == nil || withExp.Hits[0].Behavior == nil {
+		t.Fatalf("include explanations should include metadata: %#v", withExp.Hits[0])
+	}
+	without := false
+	trimmed := e.AuditWithOptions("replacehit", model.AuditOptions{Normalize: &include, IncludeExplanations: &without})
+	if len(trimmed.Hits) == 0 || trimmed.Hits[0].Provenance != nil || trimmed.Hits[0].Behavior != nil || trimmed.Hits[0].RuleID == "" || trimmed.Hits[0].Action == "" {
+		t.Fatalf("metadata not trimmed or core fields missing: %#v", trimmed.Hits)
+	}
+	b, err := json.Marshal(trimmed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "provenance") || strings.Contains(string(b), "behavior") {
+		t.Fatalf("trimmed JSON exposed metadata: %s", b)
+	}
+	write(t, filepath.Join(local, "local.yml"), "id: local\ntype: keyword\ncategory: c\nkeywords: [local]\n")
+	le, err := New(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localRes := le.Audit("local", true)
+	if len(localRes.Hits) == 0 || localRes.Hits[0].Provenance != nil || localRes.Hits[0].Behavior != nil {
+		t.Fatalf("local rule metadata changed: %#v", localRes.Hits)
+	}
+}
+
+func TestBundledStatsMutationIsolation(t *testing.T) {
+	local := t.TempDir()
+	dir := t.TempDir()
+	makePack(t, dir, "g79", `{"regex":{"shield":{"1":"ok","2":"a(?=b)"}},"settings":{}}`)
+	cfg := bundledCfg(dir)
+	e, err := NewWithOptions(local, Options{BundledRules: &cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st1 := e.Stats()
+	br1 := st1.BundledRules.(bundled.RuntimeStats)
+	br1.Providers[bundled.ProviderNetEase] = bundled.ProviderRuntimeStats{}
+	st2 := e.Stats()
+	br2 := st2.BundledRules.(bundled.RuntimeStats)
+	if br2.Providers[bundled.ProviderNetEase].TotalPackRulesExamined == 0 {
+		t.Fatalf("provider map mutation leaked: %#v", br2)
+	}
+	ps := br2.Providers[bundled.ProviderNetEase]
+	ps.Groups["shield"] = 99
+	ps.Datasets["g79"] = bundled.DatasetStats{}
+	ps.IncompatibleCompatibilityHint["lookahead"] = 99
+	br2.Providers[bundled.ProviderNetEase] = ps
+	st3 := e.Stats()
+	br3 := st3.BundledRules.(bundled.RuntimeStats)
+	ps3 := br3.Providers[bundled.ProviderNetEase]
+	if ps3.Groups["shield"] == 99 || !ps3.Datasets["g79"].Loaded || ps3.IncompatibleCompatibilityHint["lookahead"] == 99 {
+		t.Fatalf("nested stats mutation leaked: %#v", ps3)
+	}
+}
+
+func TestBundledConcurrentAuditRulesStatsDuringReload(t *testing.T) {
+	local := t.TempDir()
+	dir := t.TempDir()
+	makePack(t, dir, "g79", `{"regex":{"shield":{"1":"hit0"}},"settings":{}}`)
+	cfg := bundledCfg(dir)
+	e, err := NewWithOptions(local, Options{BundledRules: &cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_ = e.Audit("hit0 hit1", true)
+					_ = e.Rules()
+					_ = e.Stats()
+				}
+			}
+		}()
+	}
+	for i := 0; i < 20; i++ {
+		if i%2 == 0 {
+			makePack(t, dir, "g79", `{"regex":{"shield":{"1":"hit1"}},"settings":{}}`)
+		} else {
+			_ = os.WriteFile(filepath.Join(dir, bundled.NetEaseG79Filename), []byte("invalid"), 0600)
+		}
+		_ = e.Reload()
+	}
+	close(stop)
+	wg.Wait()
 }

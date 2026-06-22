@@ -68,6 +68,7 @@ func PrepareWithOptions(root string, opt Options) (rules.Set, []matcher.Matcher,
 	return set, ms, bst, err
 }
 func NewFromSet(set rules.Set) (*Engine, error) {
+	set = rules.CloneSet(set)
 	ms, err := PrepareSet(set)
 	if err != nil {
 		return nil, err
@@ -104,16 +105,14 @@ func (e *Engine) Stats() rules.Stats {
 	defer e.mu.RUnlock()
 	st := e.set.Stats()
 	if len(e.bundled.Providers) > 0 {
-		st.BundledRules = e.bundled
+		st.BundledRules = bundled.CloneRuntimeStats(e.bundled)
 	}
 	return st
 }
 func (e *Engine) Rules() []rules.Rule {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	out := make([]rules.Rule, len(e.set.Rules))
-	copy(out, e.set.Rules)
-	return out
+	return rules.CloneRules(e.set.Rules)
 }
 func (e *Engine) Root() string { return e.root }
 func (e *Engine) Audit(text string, normalize bool) Result {
@@ -160,6 +159,8 @@ func (e *Engine) AuditWithOptions(text string, opt model.AuditOptions) Result {
 			hits[i].Explanation = ""
 			hits[i].Source = ""
 			hits[i].Tags = nil
+			hits[i].Provenance = nil
+			hits[i].Behavior = nil
 		}
 		if !model.BoolDefault(opt.IncludePositions, true) {
 			hits[i].Start = 0
@@ -175,6 +176,7 @@ func (e *Engine) AuditWithOptions(text string, opt model.AuditOptions) Result {
 	if len(hits) > max {
 		hits = hits[:max]
 	}
+	hits = matcher.CloneHits(hits)
 	res := Result{Matched: len(hits) > 0, Action: "pass", OriginalText: text, Hits: hits, RiskDetail: RiskDetail{Strategy: "max", HitCount: len(hits)}}
 	if model.BoolDefault(opt.IncludeNormalizedText, true) {
 		res.NormalizedText = nr.Normalized

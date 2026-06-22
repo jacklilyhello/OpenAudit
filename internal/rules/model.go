@@ -33,7 +33,7 @@ type RuleProvenance struct {
 
 type RuleBehavior struct {
 	UpstreamBehavior         string `yaml:"upstream_behavior,omitempty" json:"upstream_behavior,omitempty"`
-	ReplacementTextAvailable bool   `yaml:"replacement_text_available,omitempty" json:"replacement_text_available,omitempty"`
+	ReplacementTextAvailable bool   `yaml:"replacement_text_available" json:"replacement_text_available"`
 }
 
 type VariantConfig struct {
