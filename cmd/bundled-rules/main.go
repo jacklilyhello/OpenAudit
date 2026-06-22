@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -82,8 +81,7 @@ func validate(args []string) {
 	if input == "" {
 		log.Fatal("--input is required")
 	}
-	// #nosec G304 -- local operator-supplied validation path for offline pack validation.
-	b, err := os.ReadFile(input)
+	b, err := bundled.ReadLimitedLocalFile(input, bundled.DefaultLimits().CompressedPackBytes)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -94,13 +92,13 @@ func validate(args []string) {
 	if err := bundled.ValidatePack(p, bundled.DefaultLimits()); err != nil {
 		log.Fatal(err)
 	}
-	if reportPath != "" { // #nosec G304 -- local operator-supplied report path for offline pack validation.
-		rb, err := os.ReadFile(reportPath)
+	if reportPath != "" {
+		rb, err := bundled.ReadLimitedLocalFile(reportPath, bundled.DefaultLimits().ReportBytes)
 		if err != nil {
 			log.Fatal(err)
 		}
-		var r bundled.Report
-		if err := json.Unmarshal(rb, &r); err != nil {
+		r, err := bundled.DecodeReportJSON(rb, bundled.DefaultLimits())
+		if err != nil {
 			log.Fatal(err)
 		}
 		if err := bundled.ValidateReportForPack(r, p, b); err != nil {

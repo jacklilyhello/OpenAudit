@@ -1029,3 +1029,21 @@ Files:
 
 Notes:
 - Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.
+
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Address PR #22 review findings by enforcing duplicate identity invariants, adding unknown-record accounting, strengthening pack/report validation, bounded CLI validate reads, rollback-capable pack/report replacement, and panic-safe JSON token handling.
+- Add tests for parser malformed inputs, unknown groups, report mutations, mapping mutations, and rollback scenarios.
+
+Files:
+- internal/bundled/...
+- cmd/bundled-rules/main.go
+- docs/bundled-rules-phase-a.md
+- CODEX.md
+
+Notes:
+- Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.

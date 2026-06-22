@@ -19,10 +19,11 @@ type Limits struct {
 	RuleCount             int
 	PatternBytes          int
 	MetadataBytes         int
+	ReportBytes           int64
 }
 
 func DefaultLimits() Limits {
-	return Limits{InputJSONBytes: 4 << 20, CompressedPackBytes: 4 << 20, UncompressedPackBytes: 16 << 20, RuleCount: 20000, PatternBytes: 256 << 10, MetadataBytes: 64 << 10}
+	return Limits{InputJSONBytes: 4 << 20, CompressedPackBytes: 4 << 20, UncompressedPackBytes: 16 << 20, RuleCount: 20000, PatternBytes: 256 << 10, MetadataBytes: 64 << 10, ReportBytes: 2 << 20}
 }
 
 type Pack struct {
@@ -47,6 +48,7 @@ type Counts struct {
 	ImportedRecords       int         `json:"imported_records"`
 	EmptyRecords          int         `json:"empty_records"`
 	MalformedRecords      int         `json:"malformed_records"`
+	UnknownRecords        int         `json:"unknown_records"`
 	DuplicateIdentities   int         `json:"duplicate_identities"`
 	DuplicateRegexContent int         `json:"duplicate_regex_content"`
 	RE2Compatible         int         `json:"re2_compatible_rules"`
@@ -118,6 +120,7 @@ type Report struct {
 	ImportedRecords        int                    `json:"imported_records"`
 	EmptyRecords           int                    `json:"empty_records"`
 	MalformedRecords       int                    `json:"malformed_records"`
+	UnknownRecords         int                    `json:"unknown_records"`
 	MalformedRecordDetails []MalformedRecord      `json:"malformed_record_details"`
 	DuplicateIdentities    int                    `json:"duplicate_identities"`
 	DuplicateRegexContent  int                    `json:"duplicate_regex_content"`

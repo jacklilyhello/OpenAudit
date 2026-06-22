@@ -60,6 +60,10 @@ func BuildPack(input []byte, opt Options) (Pack, Report, []byte, []byte, error) 
 	}
 	sum := sha256.Sum256(input)
 	pack := Pack{SchemaVersion: SchemaVersion, Provider: ProviderNetEase, Dataset: opt.Dataset, SourceRepository: opt.SourceRepository, SourceCommit: strings.ToLower(opt.SourceCommit), SourceFilePath: opt.SourceFilePath, SourceInputSHA256: hex.EncodeToString(sum[:]), LicenseIdentifier: opt.LicenseIdentifier, SourceTimestamp: opt.Timestamp.UTC().Format(time.RFC3339), GeneratorName: GeneratorName, GeneratorVersion: GeneratorVersion}
+	for _, u := range doc.unknown {
+		pack.Counts.UnknownRecords += u.RecordCount
+		pack.Counts.TotalSourceRules += u.RecordCount
+	}
 	seenID, seenRegex := map[string]int{}, map[string]int{}
 	failures := []CompatibilityFailure{}
 	malformed := []MalformedRecord{}
@@ -130,7 +134,7 @@ func BuildPack(input []byte, opt Options) (Pack, Report, []byte, []byte, error) 
 		return Pack{}, Report{}, nil, nil, err
 	}
 	ps := sha256.Sum256(gz)
-	rep := Report{SchemaVersion: SchemaVersion, Provider: ProviderNetEase, Dataset: opt.Dataset, UpstreamRepository: opt.SourceRepository, PinnedSourceCommit: strings.ToLower(opt.SourceCommit), SourceFilePath: opt.SourceFilePath, SourceInputBytes: int64(len(input)), SourceInputSHA256: pack.SourceInputSHA256, GeneratedPackPath: opt.OutputPath, GeneratedReportPath: opt.ReportPath, GeneratedPackBytes: int64(len(gz)), GeneratedPackSHA256: hex.EncodeToString(ps[:]), TotalSourceRules: pack.Counts.TotalSourceRules, ParsedRules: pack.Counts.ParsedRules, ImportedRecords: pack.Counts.ImportedRecords, EmptyRecords: pack.Counts.EmptyRecords, MalformedRecords: pack.Counts.MalformedRecords, MalformedRecordDetails: malformed, DuplicateIdentities: pack.Counts.DuplicateIdentities, DuplicateRegexContent: pack.Counts.DuplicateRegexContent, RE2CompatibleRules: pack.Counts.RE2Compatible, RE2IncompatibleRules: pack.Counts.RE2Incompatible, PCRE2StatusCounts: pack.Counts.PCRE2Status, DisabledRules: pack.Counts.DisabledRules, CountsByDataset: pack.Counts.ByDataset, CountsByGroup: pack.Counts.ByGroup, UnknownGroups: doc.unknown, CompatibilityFailures: failures}
+	rep := Report{SchemaVersion: SchemaVersion, Provider: ProviderNetEase, Dataset: opt.Dataset, UpstreamRepository: opt.SourceRepository, PinnedSourceCommit: strings.ToLower(opt.SourceCommit), SourceFilePath: opt.SourceFilePath, SourceInputBytes: int64(len(input)), SourceInputSHA256: pack.SourceInputSHA256, GeneratedPackPath: opt.OutputPath, GeneratedReportPath: opt.ReportPath, GeneratedPackBytes: int64(len(gz)), GeneratedPackSHA256: hex.EncodeToString(ps[:]), TotalSourceRules: pack.Counts.TotalSourceRules, ParsedRules: pack.Counts.ParsedRules, ImportedRecords: pack.Counts.ImportedRecords, EmptyRecords: pack.Counts.EmptyRecords, MalformedRecords: pack.Counts.MalformedRecords, UnknownRecords: pack.Counts.UnknownRecords, MalformedRecordDetails: malformed, DuplicateIdentities: pack.Counts.DuplicateIdentities, DuplicateRegexContent: pack.Counts.DuplicateRegexContent, RE2CompatibleRules: pack.Counts.RE2Compatible, RE2IncompatibleRules: pack.Counts.RE2Incompatible, PCRE2StatusCounts: pack.Counts.PCRE2Status, DisabledRules: pack.Counts.DisabledRules, CountsByDataset: pack.Counts.ByDataset, CountsByGroup: pack.Counts.ByGroup, UnknownGroups: doc.unknown, CompatibilityFailures: failures}
 	if opt.OutputPath != "" {
 		rep.GeneratedOutputFiles = append(rep.GeneratedOutputFiles, opt.OutputPath)
 	}
@@ -158,7 +162,10 @@ func parse(input []byte, dataset string, lim Limits) (parsedDoc, error) {
 		if err != nil {
 			return parsedDoc{}, err
 		}
-		key := kt.(string)
+		key, okKey := kt.(string)
+		if !okKey {
+			return parsedDoc{}, errors.New("top-level key must be a string")
+		}
 		lk := strings.ToLower(key)
 		if seenTop[lk] {
 			return parsedDoc{}, fmt.Errorf("duplicate top-level key %q", key)
@@ -202,8 +209,14 @@ func parseRegex(dec *json.Decoder, dataset string, lim Limits, out *parsedDoc, s
 		return errors.New("regex must be an object")
 	}
 	for dec.More() {
-		kt, _ := dec.Token()
-		raw := kt.(string)
+		kt, err := dec.Token()
+		if err != nil {
+			return fmt.Errorf("read regex group key: %w", err)
+		}
+		raw, okKey := kt.(string)
+		if !okKey {
+			return errors.New("regex group key must be a string")
+		}
 		g, ok := CanonicalGroup(raw)
 		lower := strings.ToLower(raw)
 		if seenGroup[lower] || (ok && seenGroup[g]) {
@@ -239,8 +252,14 @@ func parseGroup(dec *json.Decoder, dataset, group string, lim Limits, out *parse
 	}
 	seenIDs := map[string]bool{}
 	for dec.More() {
-		kt, _ := dec.Token()
-		id := kt.(string)
+		kt, err := dec.Token()
+		if err != nil {
+			return fmt.Errorf("read upstream ID for %s: %w", group, err)
+		}
+		id, okKey := kt.(string)
+		if !okKey {
+			return fmt.Errorf("regex.%s upstream ID must be a string", group)
+		}
 		if id == "" {
 			return fmt.Errorf("regex.%s contains empty upstream ID", group)
 		}
@@ -278,25 +297,43 @@ func parseGroup(dec *json.Decoder, dataset, group string, lim Limits, out *parse
 func countObjectRecords(dec *json.Decoder) (int, error) {
 	tok, err := dec.Token()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("read unknown group object: %w", err)
 	}
 	if d, ok := tok.(json.Delim); !ok || d != '{' {
-		var discard json.RawMessage
-		return 0, dec.Decode(&discard)
+		return 0, errors.New("unknown regex group must be an object")
 	}
+	seen := map[string]bool{}
 	n := 0
 	for dec.More() {
-		if _, err := dec.Token(); err != nil {
-			return n, err
+		kt, err := dec.Token()
+		if err != nil {
+			return n, fmt.Errorf("read unknown upstream ID: %w", err)
 		}
+		id, ok := kt.(string)
+		if !ok {
+			return n, errors.New("unknown upstream ID must be a string")
+		}
+		if id == "" {
+			return n, errors.New("unknown upstream ID must be non-empty")
+		}
+		if seen[id] {
+			return n, fmt.Errorf("duplicate upstream ID in unknown group %q", id)
+		}
+		seen[id] = true
 		n++
 		var discard json.RawMessage
 		if err := dec.Decode(&discard); err != nil {
-			return n, err
+			return n, fmt.Errorf("decode unknown group value: %w", err)
 		}
 	}
-	_, err = dec.Token()
-	return n, err
+	end, err := dec.Token()
+	if err != nil {
+		return n, fmt.Errorf("close unknown group object: %w", err)
+	}
+	if d, ok := end.(json.Delim); !ok || d != '}' {
+		return n, errors.New("unknown group object not closed")
+	}
+	return n, nil
 }
 func valueType(raw []byte) string {
 	raw = bytes.TrimSpace(raw)
@@ -347,6 +384,12 @@ func ValidatePack(p Pack, lim Limits) error {
 	if p.LicenseIdentifier == "" || p.GeneratorName == "" || p.GeneratorVersion == "" {
 		return errors.New("license and generator fields are required")
 	}
+	if ts, err := time.Parse(time.RFC3339, p.SourceTimestamp); err != nil || !ts.Equal(ts.UTC()) {
+		return errors.New("deterministic source timestamp must be valid UTC RFC3339")
+	}
+	if p.Counts.DuplicateIdentities != 0 {
+		return errors.New("duplicate identities must be zero in Phase A packs")
+	}
 	if len(p.Rules) > lim.RuleCount {
 		return errors.New("rule count exceeds limit")
 	}
@@ -375,6 +418,18 @@ func ValidatePack(p Pack, lim Limits) error {
 		ids[r.ID] = true
 		if r.Type != "regex" {
 			return errors.New("rule type must be regex")
+		}
+		if r.OriginalRegex == "" {
+			return errors.New("original regex must be non-empty")
+		}
+		if r.Source != "bundled:netease" || r.RiskLevel != "high" || r.Score != 90 {
+			return errors.New("rule source/risk/score mismatch")
+		}
+		if !validTags(r.Tags, p.Dataset, r.Group) {
+			return errors.New("rule tags mismatch")
+		}
+		if r.Description == "" || r.Metadata != m.Metadata {
+			return errors.New("rule metadata mismatch")
 		}
 		if len([]byte(r.OriginalRegex)) > lim.PatternBytes {
 			return errors.New("pattern exceeds size limit")
@@ -414,13 +469,13 @@ func ValidatePack(p Pack, lim Limits) error {
 	counts.TotalSourceRules = p.Counts.TotalSourceRules
 	counts.EmptyRecords = p.Counts.EmptyRecords
 	counts.MalformedRecords = p.Counts.MalformedRecords
-	counts.DuplicateIdentities = p.Counts.DuplicateIdentities
+	counts.UnknownRecords = p.Counts.UnknownRecords
 	counts.ByGroup = groupNameCounts(group)
 	counts.PCRE2Status = statusNameCounts(status)
-	if counts.TotalSourceRules != counts.ImportedRecords+counts.EmptyRecords+counts.MalformedRecords {
+	if counts.TotalSourceRules != counts.ImportedRecords+counts.EmptyRecords+counts.MalformedRecords+counts.UnknownRecords {
 		return errors.New("source record counts do not add up")
 	}
-	if p.Counts.ParsedRules != counts.ParsedRules || p.Counts.ImportedRecords != counts.ImportedRecords || p.Counts.DuplicateRegexContent != counts.DuplicateRegexContent || p.Counts.RE2Compatible != counts.RE2Compatible || p.Counts.RE2Incompatible != counts.RE2Incompatible || p.Counts.DisabledRules != counts.DisabledRules {
+	if p.Counts.ParsedRules != counts.ParsedRules || p.Counts.ImportedRecords != counts.ImportedRecords || p.Counts.UnknownRecords != counts.UnknownRecords || p.Counts.DuplicateRegexContent != counts.DuplicateRegexContent || p.Counts.RE2Compatible != counts.RE2Compatible || p.Counts.RE2Incompatible != counts.RE2Incompatible || p.Counts.DisabledRules != counts.DisabledRules {
 		return errors.New("pack counts do not match rules")
 	}
 	if !nameCountsEqual(p.Counts.ByDataset, counts.ByDataset) || !nameCountsEqual(p.Counts.ByGroup, counts.ByGroup) || !nameCountsEqual(p.Counts.PCRE2Status, counts.PCRE2Status) {
@@ -430,6 +485,9 @@ func ValidatePack(p Pack, lim Limits) error {
 }
 
 func ValidateReportForPack(rep Report, pack Pack, packBytes []byte) error {
+	if rep.SchemaVersion != SchemaVersion {
+		return errors.New("report schema version mismatch")
+	}
 	sum := sha256.Sum256(packBytes)
 	if rep.GeneratedPackSHA256 != hex.EncodeToString(sum[:]) {
 		return errors.New("report pack sha256 mismatch")
@@ -437,14 +495,100 @@ func ValidateReportForPack(rep Report, pack Pack, packBytes []byte) error {
 	if rep.GeneratedPackBytes != int64(len(packBytes)) {
 		return errors.New("report pack size mismatch")
 	}
-	if rep.Provider != pack.Provider || rep.Dataset != pack.Dataset || rep.UpstreamRepository != pack.SourceRepository || rep.PinnedSourceCommit != pack.SourceCommit || rep.SourceFilePath != pack.SourceFilePath {
+	if rep.Provider != pack.Provider || rep.Dataset != pack.Dataset || rep.UpstreamRepository != pack.SourceRepository || rep.PinnedSourceCommit != pack.SourceCommit || rep.SourceFilePath != pack.SourceFilePath || rep.SourceInputSHA256 != pack.SourceInputSHA256 {
 		return errors.New("report provenance mismatch")
 	}
-	if rep.ImportedRecords != pack.Counts.ImportedRecords || rep.EmptyRecords != pack.Counts.EmptyRecords || rep.MalformedRecords != pack.Counts.MalformedRecords {
+	if rep.TotalSourceRules != pack.Counts.TotalSourceRules || rep.ParsedRules != pack.Counts.ParsedRules || rep.ImportedRecords != pack.Counts.ImportedRecords || rep.EmptyRecords != pack.Counts.EmptyRecords || rep.MalformedRecords != pack.Counts.MalformedRecords || rep.UnknownRecords != pack.Counts.UnknownRecords || rep.DuplicateIdentities != pack.Counts.DuplicateIdentities || rep.DuplicateRegexContent != pack.Counts.DuplicateRegexContent || rep.RE2CompatibleRules != pack.Counts.RE2Compatible || rep.RE2IncompatibleRules != pack.Counts.RE2Incompatible || rep.DisabledRules != pack.Counts.DisabledRules {
 		return errors.New("report counts mismatch")
+	}
+	if !nameCountsEqual(rep.PCRE2StatusCounts, pack.Counts.PCRE2Status) || !nameCountsEqual(rep.CountsByDataset, pack.Counts.ByDataset) || !nameCountsEqual(rep.CountsByGroup, pack.Counts.ByGroup) {
+		return errors.New("report aggregate counts mismatch")
+	}
+	unknownSum := 0
+	seenUnknown := map[string]bool{}
+	for _, u := range rep.UnknownGroups {
+		if u.Name == "" || seenUnknown[u.Name] || u.RecordCount < 0 {
+			return errors.New("invalid unknown group details")
+		}
+		seenUnknown[u.Name] = true
+		unknownSum += u.RecordCount
+	}
+	if unknownSum != rep.UnknownRecords {
+		return errors.New("unknown record count mismatch")
+	}
+	if len(rep.MalformedRecordDetails) != rep.MalformedRecords {
+		return errors.New("malformed detail count mismatch")
+	}
+	for _, m := range rep.MalformedRecordDetails {
+		if m.Dataset != pack.Dataset || m.UpstreamID == "" || m.Reason == "" || m.ValueType == "" {
+			return errors.New("invalid malformed detail")
+		}
+		if _, ok := Mapping(m.Group); !ok {
+			return errors.New("invalid malformed group")
+		}
+	}
+	failures := map[string]CompatibilityFailure{}
+	for _, f := range rep.CompatibilityFailures {
+		key := f.GeneratedRuleID
+		if key == "" || failures[key].GeneratedRuleID != "" {
+			return errors.New("duplicate compatibility failure")
+		}
+		failures[key] = f
+	}
+	bad := 0
+	for _, r := range pack.Rules {
+		f, has := failures[r.ID]
+		if r.RE2Compatible {
+			if has {
+				return errors.New("compatible rule has failure")
+			}
+			continue
+		}
+		bad++
+		if !has {
+			return errors.New("missing compatibility failure")
+		}
+		ps := sha256.Sum256([]byte(r.OriginalRegex))
+		if f.Dataset != r.Dataset || f.Group != r.Group || f.UpstreamID != r.UpstreamID || f.PatternSHA256 != hex.EncodeToString(ps[:]) || f.CompilerError != r.RE2Error || f.FeatureHint != r.RE2FeatureHint {
+			return errors.New("compatibility failure mismatch")
+		}
+	}
+	if bad != len(rep.CompatibilityFailures) {
+		return errors.New("compatibility failure count mismatch")
+	}
+	for _, pth := range rep.GeneratedOutputFiles {
+		if strings.TrimSpace(pth) == "" {
+			return errors.New("empty generated output path")
+		}
 	}
 	return nil
 }
+
+func DecodeReportJSON(b []byte, lim Limits) (Report, error) {
+	if lim == (Limits{}) {
+		lim = DefaultLimits()
+	}
+	if int64(len(b)) > lim.ReportBytes {
+		return Report{}, errors.New("report exceeds limit")
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	var r Report
+	if err := dec.Decode(&r); err != nil {
+		return Report{}, fmt.Errorf("invalid report JSON: %w", err)
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return Report{}, errors.New("trailing report JSON value rejected")
+		}
+		return Report{}, fmt.Errorf("trailing report data rejected: %w", err)
+	}
+	if r.SchemaVersion != SchemaVersion {
+		return Report{}, errors.New("unsupported report schema_version")
+	}
+	return r, nil
+}
+
 func MarshalReport(r Report) ([]byte, error) {
 	b, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
@@ -543,36 +687,40 @@ func ConvertFile(inputPath string, opt Options, dry bool) (Report, error) {
 		if opt.OutputPath == "" || opt.ReportPath == "" {
 			return rep, errors.New("output and report paths are required")
 		}
-		if err := WriteAtomic(opt.OutputPath, gz); err != nil {
+		if err := WritePairAtomic(opt.OutputPath, gz, opt.ReportPath, rb); err != nil {
 			return rep, err
-		}
-		if err := WriteAtomic(opt.ReportPath, rb); err != nil {
-			return rep, fmt.Errorf("write report after pack succeeded: %w", err)
 		}
 	}
 	return rep, nil
 }
-func readLimitedFile(path string, lim Limits) ([]byte, error) {
-	if lim == (Limits{}) {
-		lim = DefaultLimits()
-	}
-	// #nosec G304 -- local operator-supplied converter input path; source JSON is parsed as untrusted data with explicit limits.
+func ReadLimitedLocalFile(path string, limit int64) ([]byte, error) {
+	// #nosec G304 -- local operator-supplied local path with explicit bounded read.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	if st, err := f.Stat(); err == nil && st.Size() > lim.InputJSONBytes {
-		return nil, errors.New("input JSON exceeds limit")
+	if st, err := f.Stat(); err == nil && st.Size() > limit {
+		return nil, errors.New("file exceeds limit")
 	}
-	data, err := io.ReadAll(io.LimitReader(f, lim.InputJSONBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(data)) > lim.InputJSONBytes {
-		return nil, errors.New("input JSON exceeds limit")
+	if int64(len(data)) > limit {
+		return nil, errors.New("file exceeds limit")
 	}
 	return data, nil
+}
+func readLimitedFile(path string, lim Limits) ([]byte, error) {
+	if lim == (Limits{}) {
+		lim = DefaultLimits()
+	}
+	b, err := ReadLimitedLocalFile(path, lim.InputJSONBytes)
+	if err != nil && strings.Contains(err.Error(), "file exceeds limit") {
+		return nil, errors.New("input JSON exceeds limit")
+	}
+	return b, err
 }
 
 func stableID(d, g, id string, n int) string {
@@ -696,6 +844,20 @@ func validateRelativeSafePath(p string) error {
 	}
 	return nil
 }
+func validTags(tags []string, dataset, group string) bool {
+	want := []string{"bundled", "provider:netease", "dataset:" + dataset, group}
+	if len(tags) != len(want) {
+		return false
+	}
+	seen := map[string]bool{}
+	for i, tag := range tags {
+		if tag != want[i] || seen[tag] {
+			return false
+		}
+		seen[tag] = true
+	}
+	return true
+}
 func metadataSize(r PackRule) int {
 	b, _ := json.Marshal(struct {
 		Metadata                      RuleMetadata `json:"metadata"`
@@ -703,4 +865,133 @@ func metadataSize(r PackRule) int {
 		Description, Category, Source string
 	}{r.Metadata, r.Tags, r.Description, r.Category, r.Source})
 	return len(b)
+}
+
+var pairOps = filePairOps{}
+
+type filePairOps struct {
+	writeFile func(string, []byte, os.FileMode) error
+	rename    func(string, string) error
+	remove    func(string) error
+	readFile  func(string) ([]byte, error)
+}
+
+func (o filePairOps) wf(path string, data []byte, perm os.FileMode) error {
+	if o.writeFile != nil {
+		return o.writeFile(path, data, perm)
+	}
+	return os.WriteFile(path, data, perm)
+}
+func (o filePairOps) rn(old, new string) error {
+	if o.rename != nil {
+		return o.rename(old, new)
+	}
+	return os.Rename(old, new)
+}
+func (o filePairOps) rm(path string) error {
+	if o.remove != nil {
+		return o.remove(path)
+	}
+	return os.Remove(path)
+}
+func (o filePairOps) rf(path string) ([]byte, error) {
+	if o.readFile != nil {
+		return o.readFile(path)
+	}
+	// #nosec G304 -- internal rollback helper reads previously resolved operator-supplied staged paths.
+	return os.ReadFile(path)
+}
+
+func WritePairAtomic(packPath string, packData []byte, reportPath string, reportData []byte) error {
+	if packPath == reportPath {
+		return errors.New("pack and report paths must differ")
+	}
+	_, packTarget, err := safepath.NewFileTarget(packPath)
+	if err != nil {
+		return err
+	}
+	_, reportTarget, err := safepath.NewFileTarget(reportPath)
+	if err != nil {
+		return err
+	}
+	if packTarget.Dir() != reportTarget.Dir() {
+		return errors.New("pack and report must share the same parent directory for rollback-safe replacement")
+	}
+	parent := packTarget.Dir()
+	if err := os.MkdirAll(parent, 0o750); err != nil {
+		return err
+	}
+	base := ".openaudit-pair-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	packTmp := filepath.Join(parent, base+".pack.tmp")
+	reportTmp := filepath.Join(parent, base+".report.tmp")
+	packBak := filepath.Join(parent, base+".pack.bak")
+	reportBak := filepath.Join(parent, base+".report.bak")
+	cleanup := []string{packTmp, reportTmp, packBak, reportBak}
+	defer func() {
+		for _, p := range cleanup {
+			_ = pairOps.rm(p)
+		}
+	}()
+	if err := pairOps.wf(packTmp, packData, safepath.RuntimeFilePerm); err != nil {
+		return fmt.Errorf("stage pack: %w", err)
+	}
+	if err := pairOps.wf(reportTmp, reportData, safepath.RuntimeFilePerm); err != nil {
+		return fmt.Errorf("stage report: %w", err)
+	}
+	if b, err := pairOps.rf(packTmp); err != nil || !bytes.Equal(b, packData) {
+		if err != nil {
+			return fmt.Errorf("validate staged pack: %w", err)
+		}
+		return errors.New("validate staged pack: content mismatch")
+	}
+	if b, err := pairOps.rf(reportTmp); err != nil || !bytes.Equal(b, reportData) {
+		if err != nil {
+			return fmt.Errorf("validate staged report: %w", err)
+		}
+		return errors.New("validate staged report: content mismatch")
+	}
+	packExisted := false
+	reportExisted := false
+	if _, err := os.Stat(packTarget.String()); err == nil {
+		packExisted = true
+		if err := pairOps.rn(packTarget.String(), packBak); err != nil {
+			return fmt.Errorf("backup pack: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	rollback := func(cause error) error {
+		rbErrs := []string{}
+		_ = pairOps.rm(packTarget.String())
+		_ = pairOps.rm(reportTarget.String())
+		if packExisted {
+			if err := pairOps.rn(packBak, packTarget.String()); err != nil {
+				rbErrs = append(rbErrs, "pack: "+err.Error())
+			}
+		}
+		if reportExisted {
+			if err := pairOps.rn(reportBak, reportTarget.String()); err != nil {
+				rbErrs = append(rbErrs, "report: "+err.Error())
+			}
+		}
+		if len(rbErrs) > 0 {
+			return fmt.Errorf("%w; rollback failed: %s", cause, strings.Join(rbErrs, "; "))
+		}
+		return cause
+	}
+	if _, err := os.Stat(reportTarget.String()); err == nil {
+		reportExisted = true
+		if err := pairOps.rn(reportTarget.String(), reportBak); err != nil {
+			return rollback(fmt.Errorf("backup report: %w", err))
+		}
+	} else if !os.IsNotExist(err) {
+		return rollback(err)
+	}
+	if err := pairOps.rn(packTmp, packTarget.String()); err != nil {
+		return rollback(fmt.Errorf("replace pack: %w", err))
+	}
+	if err := pairOps.rn(reportTmp, reportTarget.String()); err != nil {
+		return rollback(fmt.Errorf("replace report: %w", err))
+	}
+	return nil
 }

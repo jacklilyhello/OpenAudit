@@ -37,7 +37,7 @@ func TestBuildPackNetEasePhaseA(t *testing.T) {
 	if r.EmptyRecords != 2 || r.MalformedRecords != 1 || len(r.MalformedRecordDetails) != 1 {
 		t.Fatalf("empty/malformed=%d/%d", r.EmptyRecords, r.MalformedRecords)
 	}
-	if r.TotalSourceRules != r.ImportedRecords+r.EmptyRecords+r.MalformedRecords {
+	if r.TotalSourceRules != r.ImportedRecords+r.EmptyRecords+r.MalformedRecords+r.UnknownRecords {
 		t.Fatal("totals do not add up")
 	}
 	if r.DuplicateRegexContent != 1 {
@@ -256,3 +256,207 @@ func TestNoLargeFixtures(t *testing.T) {
 }
 func withLim(o Options, l Limits) Options      { o.Limits = l; return o }
 func withPaths(o Options, p, r string) Options { o.OutputPath = p; o.ReportPath = r; return o }
+
+func TestDuplicateIdentitiesInvariant(t *testing.T) {
+	p, _, _, _, err := BuildPack([]byte(`{"regex":{"shield":{"1":"ok"}},"settings":{}}`), opt("g79"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Counts.DuplicateIdentities != 0 {
+		t.Fatal("valid pack has duplicate identities")
+	}
+	if err := ValidatePack(p, DefaultLimits()); err != nil {
+		t.Fatal(err)
+	}
+	p.Counts.DuplicateIdentities = 1
+	if err := ValidatePack(p, DefaultLimits()); err == nil {
+		t.Fatal("duplicate identities accepted")
+	}
+}
+
+func TestUnknownGroupPolicies(t *testing.T) {
+	valid := []byte(`{"regex":{"unknown":{"1":"x","2":7},"empty_unknown":{}},"settings":{}}`)
+	_, r, _, _, err := BuildPack(valid, opt("g79"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.UnknownRecords != 2 || len(r.UnknownGroups) != 2 {
+		t.Fatalf("unknown accounting: %#v", r.UnknownGroups)
+	}
+	bad := []string{`{"regex":{"unknown":1}}`, `{"regex":{"unknown":"x"}}`, `{"regex":{"unknown":true}}`, `{"regex":{"unknown":null}}`, `{"regex":{"unknown":[]}}`, `{"regex":{"unknown":{"1":"x","1":"y"}}}`, `{"regex":{"unknown":{"1": }}}`}
+	for _, b := range bad {
+		if _, _, _, _, err := BuildPack([]byte(b), opt("g79")); err == nil {
+			t.Fatalf("bad unknown accepted: %s", b)
+		}
+	}
+}
+
+func TestMalformedCorpusNeverPanics(t *testing.T) {
+	inputs := [][]byte{[]byte(`{`), []byte(`{"regex":{`), []byte(`{"regex":{"shield":{`), []byte(`{"regex":{"shield":{"1"`), []byte(`{"regex":{"shield":{"1":`), []byte(`{"regex":{"shield":{"1": [}`), []byte(`[]`), []byte(`{"regex":{"shield":[]}}`), []byte{0xff, 0xfe, '{'}}
+	for _, in := range inputs {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("panic for %q: %v", string(in), r)
+				}
+			}()
+			if _, _, _, _, err := BuildPack(in, opt("g79")); err == nil {
+				t.Fatalf("malformed accepted: %q", string(in))
+			}
+		}()
+	}
+}
+
+func TestPackMappingMutations(t *testing.T) {
+	p, _, _, _, err := BuildPack([]byte(`{"regex":{"shield":{"1":"ok"}},"settings":{}}`), opt("g79"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutations := []func(*Pack){
+		func(p *Pack) { p.Rules[0].Source = "x" }, func(p *Pack) { p.Rules[0].RiskLevel = "low" }, func(p *Pack) { p.Rules[0].Score = 1 }, func(p *Pack) { p.Rules[0].Tags = []string{"bundled"} }, func(p *Pack) { p.Rules[0].Metadata.UpstreamBehavior = "x" }, func(p *Pack) { p.Rules[0].Description = "" }, func(p *Pack) { p.Rules[0].OriginalRegex = "" }, func(p *Pack) { p.SourceTimestamp = "not-time" },
+	}
+	for i, m := range mutations {
+		q := p
+		q.Rules = append([]PackRule{}, p.Rules...)
+		m(&q)
+		if err := ValidatePack(q, DefaultLimits()); err == nil {
+			t.Fatalf("mutation %d accepted", i)
+		}
+	}
+}
+
+func TestReportMutations(t *testing.T) {
+	p, r, _, gz, err := BuildPack(fixture(), opt("g79"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateReportForPack(r, p, gz); err != nil {
+		t.Fatal(err)
+	}
+	mut := []func(*Report){func(r *Report) { r.SchemaVersion = 99 }, func(r *Report) { r.SourceInputSHA256 = "bad" }, func(r *Report) { r.UnknownRecords++ }, func(r *Report) { r.DuplicateIdentities = 1 }, func(r *Report) { r.PCRE2StatusCounts = nil }, func(r *Report) { r.CountsByGroup = nil }, func(r *Report) { r.CompatibilityFailures = append(r.CompatibilityFailures, r.CompatibilityFailures[0]) }, func(r *Report) { r.MalformedRecordDetails = nil }, func(r *Report) { r.UnknownGroups = append(r.UnknownGroups, r.UnknownGroups[0]) }}
+	for i, m := range mut {
+		x := r
+		x.PCRE2StatusCounts = append([]NameCount{}, r.PCRE2StatusCounts...)
+		x.CountsByGroup = append([]NameCount{}, r.CountsByGroup...)
+		x.CompatibilityFailures = append([]CompatibilityFailure{}, r.CompatibilityFailures...)
+		x.MalformedRecordDetails = append([]MalformedRecord{}, r.MalformedRecordDetails...)
+		x.UnknownGroups = append([]UnknownGroup{}, r.UnknownGroups...)
+		m(&x)
+		if err := ValidateReportForPack(x, p, gz); err == nil {
+			t.Fatalf("report mutation %d accepted", i)
+		}
+	}
+	rb, _ := MarshalReport(r)
+	if _, err := DecodeReportJSON(append(rb, []byte(` {}`)...), DefaultLimits()); err == nil {
+		t.Fatal("trailing report accepted")
+	}
+}
+
+func TestWritePairAtomicScenarios(t *testing.T) {
+	dir := t.TempDir()
+	pack := filepath.Join(dir, "pack.gz")
+	report := filepath.Join(dir, "report.json")
+	if err := WritePairAtomic(pack, []byte("p1"), report, []byte("r1")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(pack); string(b) != "p1" {
+		t.Fatal("pack missing")
+	}
+	if err := WritePairAtomic(pack, []byte("p2"), report, []byte("r2")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(report); string(b) != "r2" {
+		t.Fatal("report not replaced")
+	}
+	if err := WritePairAtomic(pack, []byte("x"), pack, []byte("y")); err == nil {
+		t.Fatal("identical paths accepted")
+	}
+	if err := WritePairAtomic(pack, []byte("x"), filepath.Join(t.TempDir(), "r"), []byte("y")); err == nil {
+		t.Fatal("different parents accepted")
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp") || strings.Contains(e.Name(), ".bak") {
+			t.Fatalf("left temp/backup %s", e.Name())
+		}
+	}
+}
+
+func TestWritePairAtomicRollbackFailures(t *testing.T) {
+	dir := t.TempDir()
+	pack := filepath.Join(dir, "pack.gz")
+	report := filepath.Join(dir, "report.json")
+	os.WriteFile(pack, []byte("oldp"), 0600)
+	os.WriteFile(report, []byte("oldr"), 0600)
+	oldOps := pairOps
+	defer func() { pairOps = oldOps }()
+
+	pairOps = oldOps
+	pairOps.writeFile = func(path string, data []byte, perm os.FileMode) error {
+		if strings.Contains(path, "pack.tmp") {
+			return os.ErrPermission
+		}
+		return os.WriteFile(path, data, perm)
+	}
+	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
+		t.Fatal("pack staging failure accepted")
+	}
+	if b, _ := os.ReadFile(pack); string(b) != "oldp" {
+		t.Fatal("pack changed after pack staging failure")
+	}
+	pairOps.writeFile = func(path string, data []byte, perm os.FileMode) error {
+		if strings.Contains(path, "report.tmp") {
+			return os.ErrPermission
+		}
+		return os.WriteFile(path, data, perm)
+	}
+	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
+		t.Fatal("report staging failure accepted")
+	}
+	if b, _ := os.ReadFile(pack); string(b) != "oldp" {
+		t.Fatal("pack changed after staging failure")
+	}
+	pairOps = oldOps
+	count := 0
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(new, "pack.gz") && strings.Contains(old, ".tmp") {
+			return os.ErrPermission
+		}
+		count++
+		return os.Rename(old, new)
+	}
+	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
+		t.Fatal("first replace failure accepted")
+	}
+	if b, _ := os.ReadFile(pack); string(b) != "oldp" {
+		t.Fatal("pack changed after first replace failure")
+	}
+	pairOps = oldOps
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(new, "report.json") && strings.Contains(old, ".tmp") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
+	}
+	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
+		t.Fatal("second replace failure accepted")
+	}
+	if b, _ := os.ReadFile(pack); string(b) != "oldp" {
+		t.Fatal("pack rollback failed")
+	}
+	if b, _ := os.ReadFile(report); string(b) != "oldr" {
+		t.Fatal("report rollback failed")
+	}
+}
+
+func TestReadLimitedLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "f")
+	os.WriteFile(p, []byte("abc"), 0600)
+	if _, err := ReadLimitedLocalFile(p, 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadLimitedLocalFile(p, 2); err == nil {
+		t.Fatal("oversized accepted")
+	}
+}
