@@ -28,4 +28,7 @@ Release-note style changes for OpenAudit. For detailed historical implementation
 
 ## Unreleased
 
+- Implement Phase B runtime loading for local NetEase Phase A Packs, including safe bounded Pack reads, validation, dataset/group selection, RE2-compatible activation, incompatible-rule statistics, duplicate-ID detection, atomic reload integration, and server configuration wiring.
+- Document expected `netease-g79.json.gz` / `netease-x19.json.gz` filenames, RE2 partial compatibility, unsupported PCRE2 runtime mode, failure semantics, and GPL/operator distribution scope.
+
 - Add Phase A foundation for default-disabled NetEase bundled rule conversion, deterministic internal packs, machine-readable import reports, and local validation CLI. Runtime loading and PCRE2 matching are deferred.

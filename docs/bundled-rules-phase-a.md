@@ -39,7 +39,8 @@ go run ./cmd/bundled-rules convert \
   --source-repository https://github.com/daijunhaoMinecraft/NeteaseSensitiveWordsProject \
   --source-commit <40-char-sha> \
   --source-file-path SensitiveWords/G79SensitiveWords.json \
-  --timestamp 2026-01-01T00:00:00Z
+  --timestamp 2026-01-01T00:00:00Z \
+  --license GPL-3.0-only
 
 go run ./cmd/bundled-rules validate \
   --input ./data/bundled/netease-g79.json.gz \

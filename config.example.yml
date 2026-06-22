@@ -155,3 +155,21 @@ importer:
   allow_remote_clone: false
   allowed_clone_hosts:
     - "github.com"
+
+# Optional local-only bundled NetEase Phase A Pack runtime loading.
+# Expected files under data_dir: netease-g79.json.gz and/or netease-x19.json.gz.
+bundled_rules:
+  enabled: false
+  data_dir: ./data/bundled
+  netease:
+    enabled: false
+    mode: re2 # pcre2 is accepted in config but unsupported at runtime when enabled in Phase B.
+    datasets:
+      g79: false
+      x19: false
+    groups:
+      shield: true
+      intercept: true
+      replace: false
+      nickname: false
+      remind: false

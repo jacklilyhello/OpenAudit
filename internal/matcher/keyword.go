@@ -20,7 +20,7 @@ func NewKeywordMatcher(rs []rules.Rule) KeywordMatcher {
 					continue
 				}
 				added[pattern] = true
-				a.Add(pattern, AhoPayload{Type: "keyword", RuleID: r.ID, MatchedRuleName: r.Description, Category: r.Category, RiskLevel: r.RiskLevel, Action: r.Action, Match: kw, NormalizedMatch: pattern, Score: risk.Score(r.RiskLevel, r.Score), Description: r.Description, Source: r.Source, Tags: r.Tags})
+				a.Add(pattern, AhoPayload{Type: "keyword", RuleID: r.ID, MatchedRuleName: r.Description, Category: r.Category, RiskLevel: r.RiskLevel, Action: r.Action, Match: kw, NormalizedMatch: pattern, Score: risk.Score(r.RiskLevel, r.Score), Description: r.Description, Source: r.Source, Tags: r.Tags, Provenance: rules.CloneRuleProvenance(r.Provenance), Behavior: rules.CloneRuleBehavior(r.Behavior)})
 			}
 		}
 	}
@@ -31,7 +31,7 @@ func (m KeywordMatcher) Match(text string) []Hit {
 	var hits []Hit
 	for _, x := range m.aho.Match(text) {
 		p := x.Payload
-		hits = append(hits, Hit{Type: p.Type, RuleID: p.RuleID, MatchedRuleName: p.MatchedRuleName, Category: p.Category, RiskLevel: p.RiskLevel, Action: p.Action, Match: p.Match, NormalizedMatch: p.NormalizedMatch, SourceText: p.Match, Start: x.Start, End: x.End, Score: p.Score, Description: p.Description, Source: p.Source, Tags: p.Tags})
+		hits = append(hits, Hit{Type: p.Type, RuleID: p.RuleID, MatchedRuleName: p.MatchedRuleName, Category: p.Category, RiskLevel: p.RiskLevel, Action: p.Action, Match: p.Match, NormalizedMatch: p.NormalizedMatch, SourceText: p.Match, Start: x.Start, End: x.End, Score: p.Score, Description: p.Description, Source: p.Source, Tags: p.Tags, Provenance: rules.CloneRuleProvenance(p.Provenance), Behavior: rules.CloneRuleBehavior(p.Behavior)})
 	}
 	return hits
 }

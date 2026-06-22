@@ -11,6 +11,8 @@ type Rule struct {
 	Description string              `yaml:"description" json:"description,omitempty"`
 	Source      string              `yaml:"source" json:"source,omitempty"`
 	Tags        []string            `yaml:"tags" json:"tags,omitempty"`
+	Provenance  *RuleProvenance     `yaml:"provenance,omitempty" json:"provenance,omitempty"`
+	Behavior    *RuleBehavior       `yaml:"behavior,omitempty" json:"behavior,omitempty"`
 	Enabled     *bool               `yaml:"enabled" json:"enabled,omitempty"`
 	Keywords    []string            `yaml:"keywords" json:"keywords,omitempty"`
 	Patterns    []string            `yaml:"patterns" json:"patterns,omitempty"`
@@ -21,6 +23,18 @@ type Rule struct {
 }
 
 func (r Rule) IsEnabled() bool { return r.Enabled == nil || *r.Enabled }
+
+type RuleProvenance struct {
+	Provider   string `yaml:"provider,omitempty" json:"provider,omitempty"`
+	Dataset    string `yaml:"dataset,omitempty" json:"dataset,omitempty"`
+	Group      string `yaml:"group,omitempty" json:"group,omitempty"`
+	UpstreamID string `yaml:"upstream_id,omitempty" json:"upstream_id,omitempty"`
+}
+
+type RuleBehavior struct {
+	UpstreamBehavior         string `yaml:"upstream_behavior,omitempty" json:"upstream_behavior,omitempty"`
+	ReplacementTextAvailable bool   `yaml:"replacement_text_available" json:"replacement_text_available"`
+}
 
 type VariantConfig struct {
 	Enabled               *bool    `yaml:"enabled,omitempty" json:"enabled,omitempty"`
@@ -62,6 +76,7 @@ type Stats struct {
 	Actions           map[string]int `json:"actions"`
 	Sources           map[string]int `json:"sources"`
 	Version           string         `json:"version"`
+	BundledRules      any            `json:"bundled_rules,omitempty"`
 }
 
 func (s Set) Stats() Stats {

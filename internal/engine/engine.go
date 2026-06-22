@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"github.com/openaudit/openaudit/internal/bundled"
+	"github.com/openaudit/openaudit/internal/config"
 	"github.com/openaudit/openaudit/internal/matcher"
 	"github.com/openaudit/openaudit/internal/model"
 	"github.com/openaudit/openaudit/internal/normalizer"
@@ -13,26 +15,60 @@ import (
 )
 
 type Engine struct {
-	mu        sync.RWMutex
-	root      string
-	set       rules.Set
-	keyword   matcher.Matcher
-	regex     matcher.Matcher
-	domain    matcher.Matcher
-	pinyin    matcher.Matcher
-	homophone matcher.Matcher
+	mu            sync.RWMutex
+	root          string
+	set           rules.Set
+	keyword       matcher.Matcher
+	regex         matcher.Matcher
+	domain        matcher.Matcher
+	pinyin        matcher.Matcher
+	homophone     matcher.Matcher
+	bundled       bundled.RuntimeStats
+	bundledConfig *config.BundledRulesConfig
 }
 
-func New(root string) (*Engine, error) { e := &Engine{root: root}; return e, e.Reload() }
-func Prepare(root string) (rules.Set, []matcher.Matcher, error) {
+type Options struct {
+	BundledRules *config.BundledRulesConfig
+}
+
+func New(root string) (*Engine, error) { return NewWithOptions(root, Options{}) }
+func NewWithOptions(root string, opt Options) (*Engine, error) {
+	e := &Engine{root: root, bundledConfig: cloneBundledRulesConfig(opt.BundledRules)}
+	return e, e.Reload()
+}
+
+func cloneBundledRulesConfig(in *config.BundledRulesConfig) *config.BundledRulesConfig {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+func Prepare(root string) (rules.Set, []matcher.Matcher, bundled.RuntimeStats, error) {
+	return PrepareWithOptions(root, Options{})
+}
+func PrepareWithOptions(root string, opt Options) (rules.Set, []matcher.Matcher, bundled.RuntimeStats, error) {
 	set, err := rules.Load(root)
 	if err != nil {
-		return set, nil, err
+		return set, nil, bundled.RuntimeStats{}, err
+	}
+	var bst bundled.RuntimeStats
+	if opt.BundledRules != nil {
+		extra, stats, err := bundled.LoadRuntime(*opt.BundledRules)
+		if err != nil {
+			return set, nil, stats, err
+		}
+		bst = stats
+		set, err = bundled.MergeRules(set, extra)
+		if err != nil {
+			return set, nil, stats, err
+		}
 	}
 	ms, err := PrepareSet(set)
-	return set, ms, err
+	return set, ms, bst, err
 }
 func NewFromSet(set rules.Set) (*Engine, error) {
+	set = rules.CloneSet(set)
 	ms, err := PrepareSet(set)
 	if err != nil {
 		return nil, err
@@ -49,7 +85,7 @@ func PrepareSet(set rules.Set) ([]matcher.Matcher, error) {
 	return ms, nil
 }
 func (e *Engine) Reload() error {
-	set, ms, err := Prepare(e.root)
+	set, ms, bst, err := PrepareWithOptions(e.root, Options{BundledRules: e.bundledConfig})
 	if err != nil {
 		return err
 	}
@@ -60,16 +96,23 @@ func (e *Engine) Reload() error {
 	e.domain = ms[2]
 	e.pinyin = ms[3]
 	e.homophone = ms[4]
+	e.bundled = bst
 	e.mu.Unlock()
 	return nil
 }
-func (e *Engine) Stats() rules.Stats { e.mu.RLock(); defer e.mu.RUnlock(); return e.set.Stats() }
+func (e *Engine) Stats() rules.Stats {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	st := e.set.Stats()
+	if len(e.bundled.Providers) > 0 {
+		st.BundledRules = bundled.CloneRuntimeStats(e.bundled)
+	}
+	return st
+}
 func (e *Engine) Rules() []rules.Rule {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	out := make([]rules.Rule, len(e.set.Rules))
-	copy(out, e.set.Rules)
-	return out
+	return rules.CloneRules(e.set.Rules)
 }
 func (e *Engine) Root() string { return e.root }
 func (e *Engine) Audit(text string, normalize bool) Result {
@@ -116,6 +159,8 @@ func (e *Engine) AuditWithOptions(text string, opt model.AuditOptions) Result {
 			hits[i].Explanation = ""
 			hits[i].Source = ""
 			hits[i].Tags = nil
+			hits[i].Provenance = nil
+			hits[i].Behavior = nil
 		}
 		if !model.BoolDefault(opt.IncludePositions, true) {
 			hits[i].Start = 0
@@ -131,6 +176,7 @@ func (e *Engine) AuditWithOptions(text string, opt model.AuditOptions) Result {
 	if len(hits) > max {
 		hits = hits[:max]
 	}
+	hits = matcher.CloneHits(hits)
 	res := Result{Matched: len(hits) > 0, Action: "pass", OriginalText: text, Hits: hits, RiskDetail: RiskDetail{Strategy: "max", HitCount: len(hits)}}
 	if model.BoolDefault(opt.IncludeNormalizedText, true) {
 		res.NormalizedText = nr.Normalized

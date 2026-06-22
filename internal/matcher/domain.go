@@ -29,7 +29,7 @@ func MatchDomains(text string, rs []rules.Rule) []Hit {
 			for _, d := range r.Domains {
 				dom := NormalizeDomain(d)
 				if host == dom || strings.HasSuffix(host, "."+dom) {
-					hits = append(hits, Hit{Type: "domain", RuleID: r.ID, Category: r.Category, RiskLevel: r.RiskLevel, Action: r.Action, Match: token, NormalizedMatch: host, Start: s, End: e, Score: risk.Score(r.RiskLevel, r.Score), Description: r.Description, Source: r.Source, Tags: r.Tags})
+					hits = append(hits, Hit{Type: "domain", RuleID: r.ID, Category: r.Category, RiskLevel: r.RiskLevel, Action: r.Action, Match: token, NormalizedMatch: host, Start: s, End: e, Score: risk.Score(r.RiskLevel, r.Score), Description: r.Description, Source: r.Source, Tags: r.Tags, Provenance: rules.CloneRuleProvenance(r.Provenance), Behavior: rules.CloneRuleBehavior(r.Behavior)})
 				}
 			}
 		}

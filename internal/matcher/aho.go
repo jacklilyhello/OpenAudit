@@ -1,11 +1,17 @@
 package matcher
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/openaudit/openaudit/internal/rules"
+)
 
 type AhoPayload struct {
 	RuleID, Type, VariantType, MatchedRuleName, Category, RiskLevel, Action, Match, NormalizedMatch string
 	Canonical, Variant, SourceText, Explanation, Description, Source                                string
 	Tags                                                                                            []string
+	Provenance                                                                                      *rules.RuleProvenance
+	Behavior                                                                                        *rules.RuleBehavior
 	Score                                                                                           int
 }
 type ahoOut struct {

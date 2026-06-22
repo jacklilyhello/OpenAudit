@@ -91,6 +91,6 @@ Deterministic E2E validation is available through `make e2e` and is treated as m
 OpenAudit is an early self-hosted project. See [CHANGELOG.md](CHANGELOG.md) for release-relevant completed work, [ROADMAP.md](ROADMAP.md) for future work, and [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md) for historical implementation notes.
 
 
-## NetEase bundled rules foundation (Phase A)
+## NetEase bundled rules (Phase A/B)
 
-OpenAudit includes a default-disabled, local-only foundation for future NetEase bundled rule packs. Phase A provides configuration, a deterministic pack schema, RE2 compatibility analysis, import reports, and `go run ./cmd/bundled-rules convert|validate`; it does **not** activate bundled rules at runtime and does **not** commit complete upstream databases or generated packs. See `docs/bundled-rules-phase-a.md`.
+OpenAudit includes default-disabled, local-only NetEase bundled rule support. Phase A provides configuration, deterministic Pack generation, RE2 compatibility analysis, reports, and `go run ./cmd/bundled-rules convert|validate`. Phase B can load operator-supplied `netease-g79.json.gz` and `netease-x19.json.gz` Packs from `bundled_rules.data_dir`, validate them at startup/reload, activate only selected RE2-compatible groups, and expose additive runtime statistics. No complete upstream NetEase database is bundled, no startup download occurs, and PCRE2 runtime support is not included. See `docs/bundled-rules-phase-a.md` and `docs/bundled-rules-phase-b-runtime.md`.

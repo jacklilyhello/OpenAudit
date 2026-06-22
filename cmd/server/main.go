@@ -32,7 +32,7 @@ func main() {
 	if cfg.UnsafeProduction && cfg.App.Env == "production" {
 		log.Printf("WARNING: OPENAUDIT_ALLOW_UNSAFE_PRODUCTION=true disables production safety checks")
 	}
-	e, err := engine.New(cfg.Rules.DataDir)
+	e, err := engine.NewWithOptions(cfg.Rules.DataDir, engine.Options{BundledRules: &cfg.BundledRules})
 	if err != nil {
 		log.Fatalf("load rules: %v", err)
 	}
