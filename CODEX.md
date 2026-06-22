@@ -991,3 +991,93 @@ Notes:
 * No benchmark helper code is committed.
 * CodeQL clean output is not required for this phase; real issues are fixed and false positives are documented with invariants if applicable.
 * Gosec findings are fixed where practical and remaining findings are reported.
+
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Implement NetEase bundled rules Phase A foundation with default-disabled configuration.
+- Add deterministic pack conversion, RE2 compatibility reporting, gzip validation, CLI, documentation, and tests.
+
+Files:
+- internal/bundled/...
+- internal/config/...
+- cmd/bundled-rules/main.go
+- docs/bundled-rules-phase-a.md
+- README.md
+- CHANGELOG.md
+
+Notes:
+- Runtime loading and PCRE2 matching are deferred; no full upstream databases or generated packs are bundled.
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Harden NetEase bundled rules Phase A with bounded file reads, strict JSON EOF and duplicate-key rejection, central pack validation, malformed-record reporting, report file generation, pack/report consistency checks, and single-member gzip validation.
+- Improve reproducibility tests, environment override validation, CLI error handling, and Phase A documentation.
+
+Files:
+- internal/bundled/...
+- internal/config/...
+- cmd/bundled-rules/main.go
+- docs/bundled-rules-phase-a.md
+- CODEX.md
+
+Notes:
+- Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.
+
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Address PR #22 review findings by enforcing duplicate identity invariants, adding unknown-record accounting, strengthening pack/report validation, bounded CLI validate reads, rollback-capable pack/report replacement, and panic-safe JSON token handling.
+- Add tests for parser malformed inputs, unknown groups, report mutations, mapping mutations, and rollback scenarios.
+
+Files:
+- internal/bundled/...
+- cmd/bundled-rules/main.go
+- docs/bundled-rules-phase-a.md
+- CODEX.md
+
+Notes:
+- Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.
+
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Finalize PR #22 Phase A rollback and validation fixes with explicit rollback state tracking, secure same-directory temporary staging, directory sync handling, and canonical UTC timestamp validation.
+- Add deterministic rollback state tests and UTC timestamp policy tests.
+
+Files:
+- internal/bundled/...
+- docs/bundled-rules-phase-a.md
+- CODEX.md
+
+Notes:
+- Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.
+
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Fix WritePairAtomic backup lifecycle so failed backup restoration preserves retained recovery backups and reports their paths.
+- Add deterministic tests for retained pack/report backups, both-restore failure, and post-commit backup cleanup failure.
+
+Files:
+- internal/bundled/...
+- docs/bundled-rules-phase-a.md
+- CODEX.md
+
+Notes:
+- Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.

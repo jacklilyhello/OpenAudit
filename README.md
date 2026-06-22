@@ -89,3 +89,8 @@ Deterministic E2E validation is available through `make e2e` and is treated as m
 ## Development status
 
 OpenAudit is an early self-hosted project. See [CHANGELOG.md](CHANGELOG.md) for release-relevant completed work, [ROADMAP.md](ROADMAP.md) for future work, and [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md) for historical implementation notes.
+
+
+## NetEase bundled rules foundation (Phase A)
+
+OpenAudit includes a default-disabled, local-only foundation for future NetEase bundled rule packs. Phase A provides configuration, a deterministic pack schema, RE2 compatibility analysis, import reports, and `go run ./cmd/bundled-rules convert|validate`; it does **not** activate bundled rules at runtime and does **not** commit complete upstream databases or generated packs. See `docs/bundled-rules-phase-a.md`.

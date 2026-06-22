@@ -1,0 +1,1 @@
+{"regex":{"Shield":{"2":"safe","10":"(?=bad)","1":"(?<=bad)","dup":"same","dup2":"same","empty":"","nil":null,"badnum":7},"intercept":{"1":"(a)\\1"},"replace":{"1":"replace"},"nickname":{"1":"nick"},"remind":{"1":"remind"},"unknown":{"1":"x"}},"settings":{}}

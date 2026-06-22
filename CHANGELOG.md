@@ -24,3 +24,8 @@ Release-note style changes for OpenAudit. For detailed historical implementation
 - Filesystem operations for imports, history, release state, audit logs, and generated files use root-constrained safepath handling and restrictive runtime permissions.
 - SQL request values are parameterized, and dynamic export/filter choices are restricted to fixed code allowlists.
 - Production API keys and provider secrets are expected to come from environment variables or secret stores and must not be committed.
+
+
+## Unreleased
+
+- Add Phase A foundation for default-disabled NetEase bundled rule conversion, deterministic internal packs, machine-readable import reports, and local validation CLI. Runtime loading and PCRE2 matching are deferred.
