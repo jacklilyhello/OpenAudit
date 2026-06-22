@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"github.com/openaudit/openaudit/internal/bundled"
+	"github.com/openaudit/openaudit/internal/config"
 	"github.com/openaudit/openaudit/internal/matcher"
 	"github.com/openaudit/openaudit/internal/model"
 	"github.com/openaudit/openaudit/internal/normalizer"
@@ -21,16 +23,41 @@ type Engine struct {
 	domain    matcher.Matcher
 	pinyin    matcher.Matcher
 	homophone matcher.Matcher
+	bundled   bundled.RuntimeStats
+	options   Options
 }
 
-func New(root string) (*Engine, error) { e := &Engine{root: root}; return e, e.Reload() }
-func Prepare(root string) (rules.Set, []matcher.Matcher, error) {
+type Options struct {
+	BundledRules *config.BundledRulesConfig
+}
+
+func New(root string) (*Engine, error) { return NewWithOptions(root, Options{}) }
+func NewWithOptions(root string, opt Options) (*Engine, error) {
+	e := &Engine{root: root, options: opt}
+	return e, e.Reload()
+}
+func Prepare(root string) (rules.Set, []matcher.Matcher, bundled.RuntimeStats, error) {
+	return PrepareWithOptions(root, Options{})
+}
+func PrepareWithOptions(root string, opt Options) (rules.Set, []matcher.Matcher, bundled.RuntimeStats, error) {
 	set, err := rules.Load(root)
 	if err != nil {
-		return set, nil, err
+		return set, nil, bundled.RuntimeStats{}, err
+	}
+	var bst bundled.RuntimeStats
+	if opt.BundledRules != nil {
+		extra, stats, err := bundled.LoadRuntime(*opt.BundledRules)
+		if err != nil {
+			return set, nil, stats, err
+		}
+		bst = stats
+		set, err = bundled.MergeRules(set, extra)
+		if err != nil {
+			return set, nil, stats, err
+		}
 	}
 	ms, err := PrepareSet(set)
-	return set, ms, err
+	return set, ms, bst, err
 }
 func NewFromSet(set rules.Set) (*Engine, error) {
 	ms, err := PrepareSet(set)
@@ -49,7 +76,7 @@ func PrepareSet(set rules.Set) ([]matcher.Matcher, error) {
 	return ms, nil
 }
 func (e *Engine) Reload() error {
-	set, ms, err := Prepare(e.root)
+	set, ms, bst, err := PrepareWithOptions(e.root, e.options)
 	if err != nil {
 		return err
 	}
@@ -60,10 +87,19 @@ func (e *Engine) Reload() error {
 	e.domain = ms[2]
 	e.pinyin = ms[3]
 	e.homophone = ms[4]
+	e.bundled = bst
 	e.mu.Unlock()
 	return nil
 }
-func (e *Engine) Stats() rules.Stats { e.mu.RLock(); defer e.mu.RUnlock(); return e.set.Stats() }
+func (e *Engine) Stats() rules.Stats {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	st := e.set.Stats()
+	if len(e.bundled.Providers) > 0 {
+		st.BundledRules = e.bundled
+	}
+	return st
+}
 func (e *Engine) Rules() []rules.Rule {
 	e.mu.RLock()
 	defer e.mu.RUnlock()

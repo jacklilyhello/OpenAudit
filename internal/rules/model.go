@@ -62,6 +62,7 @@ type Stats struct {
 	Actions           map[string]int `json:"actions"`
 	Sources           map[string]int `json:"sources"`
 	Version           string         `json:"version"`
+	BundledRules      any            `json:"bundled_rules,omitempty"`
 }
 
 func (s Set) Stats() Stats {
