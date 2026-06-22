@@ -991,3 +991,23 @@ Notes:
 * No benchmark helper code is committed.
 * CodeQL clean output is not required for this phase; real issues are fixed and false positives are documented with invariants if applicable.
 * Gosec findings are fixed where practical and remaining findings are reported.
+
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Implement NetEase bundled rules Phase A foundation with default-disabled configuration.
+- Add deterministic pack conversion, RE2 compatibility reporting, gzip validation, CLI, documentation, and tests.
+
+Files:
+- internal/bundled/...
+- internal/config/...
+- cmd/bundled-rules/main.go
+- docs/bundled-rules-phase-a.md
+- README.md
+- CHANGELOG.md
+
+Notes:
+- Runtime loading and PCRE2 matching are deferred; no full upstream databases or generated packs are bundled.

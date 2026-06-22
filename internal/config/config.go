@@ -13,6 +13,7 @@ type Config struct {
 	AuditLog         AuditLogConfig         `yaml:"audit_log" json:"audit_log"`
 	RuleHistory      RuleHistoryConfig      `yaml:"rule_history" json:"rule_history"`
 	Importer         ImporterConfig         `yaml:"importer" json:"importer"`
+	BundledRules     BundledRulesConfig     `yaml:"bundled_rules" json:"bundled_rules"`
 	Storage          StorageConfig          `yaml:"storage" json:"storage"`
 	Limits           LimitsConfig           `yaml:"limits" json:"limits"`
 	AI               AIConfig               `yaml:"ai" json:"ai"`
@@ -89,6 +90,29 @@ type RuleHistoryConfig struct {
 	ImportBatchesPath string `yaml:"import_batches_path" json:"import_batches_path"`
 	MaxEntries        int    `yaml:"max_entries" json:"max_entries"`
 	SnapshotDir       string `yaml:"snapshot_dir" json:"snapshot_dir"`
+}
+
+type BundledRulesConfig struct {
+	Enabled bool                 `yaml:"enabled" json:"enabled"`
+	DataDir string               `yaml:"data_dir" json:"data_dir"`
+	NetEase NetEaseBundledConfig `yaml:"netease" json:"netease"`
+}
+type NetEaseBundledConfig struct {
+	Enabled  bool                  `yaml:"enabled" json:"enabled"`
+	Mode     string                `yaml:"mode" json:"mode"`
+	Datasets NetEaseDatasetsConfig `yaml:"datasets" json:"datasets"`
+	Groups   NetEaseGroupsConfig   `yaml:"groups" json:"groups"`
+}
+type NetEaseDatasetsConfig struct {
+	G79 bool `yaml:"g79" json:"g79"`
+	X19 bool `yaml:"x19" json:"x19"`
+}
+type NetEaseGroupsConfig struct {
+	Shield    bool `yaml:"shield" json:"shield"`
+	Intercept bool `yaml:"intercept" json:"intercept"`
+	Replace   bool `yaml:"replace" json:"replace"`
+	Nickname  bool `yaml:"nickname" json:"nickname"`
+	Remind    bool `yaml:"remind" json:"remind"`
 }
 
 type ImporterConfig struct {

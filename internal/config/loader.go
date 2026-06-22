@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -34,7 +35,9 @@ func Load(path string) (Config, error) {
 		}
 	}
 	fill(&cfg)
-	applyEnv(&cfg)
+	if err := applyEnv(&cfg); err != nil {
+		return cfg, err
+	}
 	return cfg, Validate(cfg)
 }
 func cleanConfigPath(path string) (string, error) {
@@ -54,7 +57,7 @@ func cleanConfigPath(path string) (string, error) {
 	return cleaned, nil
 }
 
-func applyEnv(c *Config) {
+func applyEnv(c *Config) error {
 	if v := strings.TrimSpace(os.Getenv("OPENAUDIT_ENV")); v != "" {
 		c.App.Env = v
 	}
@@ -65,6 +68,33 @@ func applyEnv(c *Config) {
 		c.Security.APIKeys = append(c.Security.APIKeys, v)
 	}
 	c.UnsafeProduction = strings.EqualFold(os.Getenv("OPENAUDIT_ALLOW_UNSAFE_PRODUCTION"), "true")
+	boolEnv := func(name string, dst *bool) error {
+		if v, ok := os.LookupEnv(name); ok {
+			b, err := strconv.ParseBool(strings.TrimSpace(v))
+			if err != nil {
+				return fmt.Errorf("invalid boolean %s: %w", name, err)
+			}
+			*dst = b
+		}
+		return nil
+	}
+	for _, item := range []struct {
+		name string
+		dst  *bool
+	}{
+		{"OPENAUDIT_BUNDLED_RULES_ENABLED", &c.BundledRules.Enabled}, {"OPENAUDIT_BUNDLED_RULES_NETEASE_ENABLED", &c.BundledRules.NetEase.Enabled}, {"OPENAUDIT_BUNDLED_RULES_NETEASE_DATASETS_G79", &c.BundledRules.NetEase.Datasets.G79}, {"OPENAUDIT_BUNDLED_RULES_NETEASE_DATASETS_X19", &c.BundledRules.NetEase.Datasets.X19}, {"OPENAUDIT_BUNDLED_RULES_NETEASE_GROUPS_SHIELD", &c.BundledRules.NetEase.Groups.Shield}, {"OPENAUDIT_BUNDLED_RULES_NETEASE_GROUPS_INTERCEPT", &c.BundledRules.NetEase.Groups.Intercept}, {"OPENAUDIT_BUNDLED_RULES_NETEASE_GROUPS_REPLACE", &c.BundledRules.NetEase.Groups.Replace}, {"OPENAUDIT_BUNDLED_RULES_NETEASE_GROUPS_NICKNAME", &c.BundledRules.NetEase.Groups.Nickname}, {"OPENAUDIT_BUNDLED_RULES_NETEASE_GROUPS_REMIND", &c.BundledRules.NetEase.Groups.Remind},
+	} {
+		if err := boolEnv(item.name, item.dst); err != nil {
+			return err
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("OPENAUDIT_BUNDLED_RULES_DATA_DIR")); v != "" {
+		c.BundledRules.DataDir = v
+	}
+	if v := strings.TrimSpace(os.Getenv("OPENAUDIT_BUNDLED_RULES_NETEASE_MODE")); v != "" {
+		c.BundledRules.NetEase.Mode = v
+	}
+	return nil
 }
 func fill(c *Config) {
 	d := Defaults()
@@ -85,6 +115,12 @@ func fill(c *Config) {
 	}
 	if c.Rules.DataDir == "" {
 		c.Rules.DataDir = d.Rules.DataDir
+	}
+	if c.BundledRules.DataDir == "" {
+		c.BundledRules.DataDir = d.BundledRules.DataDir
+	}
+	if c.BundledRules.NetEase.Mode == "" {
+		c.BundledRules.NetEase.Mode = d.BundledRules.NetEase.Mode
 	}
 	if c.Admin.Path == "" {
 		c.Admin.Path = d.Admin.Path
@@ -223,6 +259,9 @@ func Validate(c Config) error {
 	if c.CloudflareAccess.VerifyJWT {
 		return errors.New("Cloudflare Access JWT verification is not implemented yet")
 	}
+	if err := validateBundledRules(c.BundledRules); err != nil {
+		return err
+	}
 	if c.Storage.Backend != "sqlite" && c.Storage.Backend != "jsonl" && c.Storage.Backend != "memory" {
 		return fmt.Errorf("invalid storage.backend %q: must be sqlite, jsonl, or memory", c.Storage.Backend)
 	}
@@ -347,4 +386,14 @@ func safeCIDRs(xs []string) bool {
 		}
 	}
 	return true
+}
+
+func validateBundledRules(b BundledRulesConfig) error {
+	if b.NetEase.Mode != "re2" && b.NetEase.Mode != "pcre2" {
+		return fmt.Errorf("invalid bundled_rules.netease.mode %q: must be re2 or pcre2", b.NetEase.Mode)
+	}
+	if strings.ContainsRune(b.DataDir, '\x00') || strings.Contains(b.DataDir, "..") {
+		return errors.New("bundled_rules.data_dir must not contain NUL or parent traversal")
+	}
+	return nil
 }
