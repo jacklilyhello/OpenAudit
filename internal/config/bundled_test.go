@@ -31,20 +31,44 @@ func TestBundledYAMLAndEnv(t *testing.T) {
 	if err != nil || !c.BundledRules.NetEase.Datasets.X19 {
 		t.Fatalf("env: %v", err)
 	}
+	t.Setenv("OPENAUDIT_BUNDLED_RULES_NETEASE_DATASETS_X19", "   ")
+	c, err = Load(cfg)
+	if err != nil {
+		t.Fatalf("blank env should be ignored: %v", err)
+	}
 }
-func TestBundledInvalidEnvModePath(t *testing.T) {
+func TestBundledInvalidBoolean(t *testing.T) {
 	t.Setenv("OPENAUDIT_BUNDLED_RULES_ENABLED", "notbool")
 	if _, err := Load(""); err == nil {
 		t.Fatal("bad bool accepted")
 	}
-	t.Setenv("OPENAUDIT_BUNDLED_RULES_ENABLED", "")
+}
+func TestBundledInvalidMode(t *testing.T) {
 	t.Setenv("OPENAUDIT_BUNDLED_RULES_NETEASE_MODE", "full")
 	if _, err := Load(""); err == nil {
 		t.Fatal("bad mode accepted")
 	}
-	t.Setenv("OPENAUDIT_BUNDLED_RULES_NETEASE_MODE", "re2")
+}
+func TestBundledNULPath(t *testing.T) {
+	c := Defaults()
+	c.BundledRules.DataDir = "bad\x00path"
+	if err := Validate(c); err == nil {
+		t.Fatal("NUL path accepted")
+	}
+}
+func TestBundledParentTraversalPath(t *testing.T) {
 	t.Setenv("OPENAUDIT_BUNDLED_RULES_DATA_DIR", "../x")
 	if _, err := Load(""); err == nil {
-		t.Fatal("bad path accepted")
+		t.Fatal("traversal path accepted")
+	}
+}
+func TestBundledValidPaths(t *testing.T) {
+	t.Setenv("OPENAUDIT_BUNDLED_RULES_DATA_DIR", "/tmp/openaudit-bundled")
+	if _, err := Load(""); err != nil {
+		t.Fatalf("absolute path rejected: %v", err)
+	}
+	t.Setenv("OPENAUDIT_BUNDLED_RULES_DATA_DIR", "./data..cache/bundled")
+	if _, err := Load(""); err != nil {
+		t.Fatalf("harmless dots rejected: %v", err)
 	}
 }

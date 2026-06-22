@@ -70,7 +70,11 @@ func applyEnv(c *Config) error {
 	c.UnsafeProduction = strings.EqualFold(os.Getenv("OPENAUDIT_ALLOW_UNSAFE_PRODUCTION"), "true")
 	boolEnv := func(name string, dst *bool) error {
 		if v, ok := os.LookupEnv(name); ok {
-			b, err := strconv.ParseBool(strings.TrimSpace(v))
+			v = strings.TrimSpace(v)
+			if v == "" {
+				return nil
+			}
+			b, err := strconv.ParseBool(v)
 			if err != nil {
 				return fmt.Errorf("invalid boolean %s: %w", name, err)
 			}
@@ -392,8 +396,25 @@ func validateBundledRules(b BundledRulesConfig) error {
 	if b.NetEase.Mode != "re2" && b.NetEase.Mode != "pcre2" {
 		return fmt.Errorf("invalid bundled_rules.netease.mode %q: must be re2 or pcre2", b.NetEase.Mode)
 	}
-	if strings.ContainsRune(b.DataDir, '\x00') || strings.Contains(b.DataDir, "..") {
-		return errors.New("bundled_rules.data_dir must not contain NUL or parent traversal")
+	return validateConfigPathComponentAware("bundled_rules.data_dir", b.DataDir, true)
+}
+
+func validateConfigPathComponentAware(name, raw string, allowAbs bool) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return errors.New(name + " must not be empty")
+	}
+	if strings.ContainsRune(raw, '\x00') {
+		return errors.New(name + " must not contain NUL")
+	}
+	if filepath.IsAbs(raw) && !allowAbs {
+		return errors.New(name + " must be relative")
+	}
+	cleaned := filepath.Clean(raw)
+	for _, part := range strings.Split(filepath.ToSlash(cleaned), "/") {
+		if part == ".." {
+			return errors.New(name + " must not contain parent traversal")
+		}
 	}
 	return nil
 }

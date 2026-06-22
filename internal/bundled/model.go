@@ -3,10 +3,13 @@ package bundled
 import "time"
 
 const (
-	SchemaVersion    = 1
-	ProviderNetEase  = "netease"
-	GeneratorName    = "openaudit-bundled-rules"
-	GeneratorVersion = "phase-a"
+	SchemaVersion     = 1
+	ProviderNetEase   = "netease"
+	GeneratorName     = "openaudit-bundled-rules"
+	GeneratorVersion  = "phase-a"
+	PCRE2NotChecked   = "not_checked"
+	PCRE2Compatible   = "compatible"
+	PCRE2Incompatible = "incompatible"
 )
 
 type Limits struct {
@@ -19,7 +22,7 @@ type Limits struct {
 }
 
 func DefaultLimits() Limits {
-	return Limits{InputJSONBytes: 2 << 20, CompressedPackBytes: 2 << 20, UncompressedPackBytes: 8 << 20, RuleCount: 20000, PatternBytes: 8192, MetadataBytes: 65536}
+	return Limits{InputJSONBytes: 4 << 20, CompressedPackBytes: 4 << 20, UncompressedPackBytes: 16 << 20, RuleCount: 20000, PatternBytes: 256 << 10, MetadataBytes: 64 << 10}
 }
 
 type Pack struct {
@@ -43,6 +46,7 @@ type Counts struct {
 	ParsedRules           int         `json:"parsed_rules"`
 	ImportedRecords       int         `json:"imported_records"`
 	EmptyRecords          int         `json:"empty_records"`
+	MalformedRecords      int         `json:"malformed_records"`
 	DuplicateIdentities   int         `json:"duplicate_identities"`
 	DuplicateRegexContent int         `json:"duplicate_regex_content"`
 	RE2Compatible         int         `json:"re2_compatible_rules"`
@@ -55,6 +59,17 @@ type Counts struct {
 type NameCount struct {
 	Name  string `json:"name"`
 	Count int    `json:"count"`
+}
+type UnknownGroup struct {
+	Name        string `json:"name"`
+	RecordCount int    `json:"record_count"`
+}
+type MalformedRecord struct {
+	Dataset    string `json:"dataset"`
+	Group      string `json:"group"`
+	UpstreamID string `json:"upstream_id"`
+	Reason     string `json:"reason"`
+	ValueType  string `json:"value_type"`
 }
 
 type PackRule struct {
@@ -86,32 +101,35 @@ type RuleMetadata struct {
 }
 
 type Report struct {
-	SchemaVersion         int                    `json:"schema_version"`
-	Provider              string                 `json:"provider"`
-	Dataset               string                 `json:"dataset"`
-	UpstreamRepository    string                 `json:"upstream_repository"`
-	PinnedSourceCommit    string                 `json:"pinned_source_commit"`
-	SourceFilePath        string                 `json:"source_file_path"`
-	SourceInputBytes      int64                  `json:"source_input_bytes"`
-	SourceInputSHA256     string                 `json:"source_input_sha256"`
-	GeneratedPackPath     string                 `json:"generated_pack_path"`
-	GeneratedPackBytes    int64                  `json:"generated_pack_bytes"`
-	GeneratedPackSHA256   string                 `json:"generated_pack_sha256"`
-	TotalSourceRules      int                    `json:"total_source_rules"`
-	ParsedRules           int                    `json:"parsed_rules"`
-	ImportedRecords       int                    `json:"imported_records"`
-	EmptyRecords          int                    `json:"empty_records"`
-	DuplicateIdentities   int                    `json:"duplicate_identities"`
-	DuplicateRegexContent int                    `json:"duplicate_regex_content"`
-	RE2CompatibleRules    int                    `json:"re2_compatible_rules"`
-	RE2IncompatibleRules  int                    `json:"re2_incompatible_rules"`
-	PCRE2StatusCounts     []NameCount            `json:"pcre2_status_counts"`
-	DisabledRules         int                    `json:"disabled_rules"`
-	CountsByDataset       []NameCount            `json:"counts_by_dataset"`
-	CountsByGroup         []NameCount            `json:"counts_by_group"`
-	UnknownGroups         []string               `json:"unknown_groups"`
-	CompatibilityFailures []CompatibilityFailure `json:"compatibility_failures"`
-	GeneratedOutputFiles  []string               `json:"generated_output_files"`
+	SchemaVersion          int                    `json:"schema_version"`
+	Provider               string                 `json:"provider"`
+	Dataset                string                 `json:"dataset"`
+	UpstreamRepository     string                 `json:"upstream_repository"`
+	PinnedSourceCommit     string                 `json:"pinned_source_commit"`
+	SourceFilePath         string                 `json:"source_file_path"`
+	SourceInputBytes       int64                  `json:"source_input_bytes"`
+	SourceInputSHA256      string                 `json:"source_input_sha256"`
+	GeneratedPackPath      string                 `json:"generated_pack_path"`
+	GeneratedReportPath    string                 `json:"generated_report_path"`
+	GeneratedPackBytes     int64                  `json:"generated_pack_bytes"`
+	GeneratedPackSHA256    string                 `json:"generated_pack_sha256"`
+	TotalSourceRules       int                    `json:"total_source_rules"`
+	ParsedRules            int                    `json:"parsed_rules"`
+	ImportedRecords        int                    `json:"imported_records"`
+	EmptyRecords           int                    `json:"empty_records"`
+	MalformedRecords       int                    `json:"malformed_records"`
+	MalformedRecordDetails []MalformedRecord      `json:"malformed_record_details"`
+	DuplicateIdentities    int                    `json:"duplicate_identities"`
+	DuplicateRegexContent  int                    `json:"duplicate_regex_content"`
+	RE2CompatibleRules     int                    `json:"re2_compatible_rules"`
+	RE2IncompatibleRules   int                    `json:"re2_incompatible_rules"`
+	PCRE2StatusCounts      []NameCount            `json:"pcre2_status_counts"`
+	DisabledRules          int                    `json:"disabled_rules"`
+	CountsByDataset        []NameCount            `json:"counts_by_dataset"`
+	CountsByGroup          []NameCount            `json:"counts_by_group"`
+	UnknownGroups          []UnknownGroup         `json:"unknown_groups"`
+	CompatibilityFailures  []CompatibilityFailure `json:"compatibility_failures"`
+	GeneratedOutputFiles   []string               `json:"generated_output_files"`
 }
 type CompatibilityFailure struct {
 	Dataset         string `json:"dataset"`
@@ -124,8 +142,8 @@ type CompatibilityFailure struct {
 }
 
 type Options struct {
-	Dataset, SourceRepository, SourceCommit, SourceFilePath, OutputPath string
-	Timestamp                                                           time.Time
-	LicenseIdentifier                                                   string
-	Limits                                                              Limits
+	Dataset, SourceRepository, SourceCommit, SourceFilePath, OutputPath, ReportPath string
+	Timestamp                                                                       time.Time
+	LicenseIdentifier                                                               string
+	Limits                                                                          Limits
 }

@@ -1,17 +1,20 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/openaudit/openaudit/internal/bundled"
 	"log"
 	"os"
-	"strconv"
 	"time"
+
+	"github.com/openaudit/openaudit/internal/bundled"
 )
 
 func main() {
+	log.SetFlags(0)
 	if len(os.Args) < 2 {
 		log.Fatal("usage: bundled-rules convert|validate")
 	}
@@ -26,10 +29,12 @@ func main() {
 }
 func convert(args []string) {
 	fs := flag.NewFlagSet("convert", flag.ExitOnError)
-	var input, output, dataset, repo, commit, src, tstamp, license string
+	var input, output, reportPath, dataset, repo, commit, src, tstamp, license string
 	dry := fs.Bool("dry-run", false, "do not write output")
+	jsonOut := fs.Bool("json", false, "print machine-readable report JSON to stdout in dry-run mode")
 	fs.StringVar(&input, "input", "", "input JSON path")
 	fs.StringVar(&output, "output", "", "output .json.gz path")
+	fs.StringVar(&reportPath, "report", "", "report JSON path")
 	fs.StringVar(&dataset, "dataset", "", "g79 or x19")
 	fs.StringVar(&repo, "source-repository", "", "upstream repository")
 	fs.StringVar(&commit, "source-commit", "", "full source commit SHA")
@@ -39,8 +44,11 @@ func convert(args []string) {
 	if err := fs.Parse(args); err != nil {
 		log.Fatal(err)
 	}
-	if input == "" || output == "" || dataset == "" || repo == "" || commit == "" || src == "" {
-		log.Fatal("--input, --output, --dataset, --source-repository, --source-commit, and --source-file-path are required")
+	if input == "" || dataset == "" || repo == "" || commit == "" || src == "" {
+		log.Fatal("--input, --dataset, --source-repository, --source-commit, and --source-file-path are required")
+	}
+	if !*dry && (output == "" || reportPath == "") {
+		log.Fatal("--output and --report are required unless --dry-run is set")
 	}
 	ts := time.Time{}
 	if tstamp != "" {
@@ -50,16 +58,24 @@ func convert(args []string) {
 			log.Fatal(err)
 		}
 	}
-	rep, err := bundled.ConvertFile(input, bundled.Options{Dataset: dataset, SourceRepository: repo, SourceCommit: commit, SourceFilePath: src, OutputPath: output, Timestamp: ts, LicenseIdentifier: license}, *dry)
-	printReport(rep)
+	rep, err := bundled.ConvertFile(input, bundled.Options{Dataset: dataset, SourceRepository: repo, SourceCommit: commit, SourceFilePath: src, OutputPath: output, ReportPath: reportPath, Timestamp: ts, LicenseIdentifier: license}, *dry)
 	if err != nil {
 		log.Fatal(err)
+	}
+	printSummary(rep)
+	if *dry && *jsonOut {
+		b, err := bundled.MarshalReport(rep)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Print(string(b))
 	}
 }
 func validate(args []string) {
 	fs := flag.NewFlagSet("validate", flag.ExitOnError)
-	var input string
+	var input, reportPath string
 	fs.StringVar(&input, "input", "", "pack .json.gz path")
+	fs.StringVar(&reportPath, "report", "", "optional report JSON path")
 	if err := fs.Parse(args); err != nil {
 		log.Fatal(err)
 	}
@@ -75,10 +91,28 @@ func validate(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("valid pack: provider=%s dataset=%s rules=%s\n", p.Provider, p.Dataset, strconv.Itoa(len(p.Rules)))
+	if err := bundled.ValidatePack(p, bundled.DefaultLimits()); err != nil {
+		log.Fatal(err)
+	}
+	if reportPath != "" { // #nosec G304 -- local operator-supplied report path for offline pack validation.
+		rb, err := os.ReadFile(reportPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		var r bundled.Report
+		if err := json.Unmarshal(rb, &r); err != nil {
+			log.Fatal(err)
+		}
+		if err := bundled.ValidateReportForPack(r, p, b); err != nil {
+			log.Fatal(err)
+		}
+		sum := sha256.Sum256(b)
+		if r.GeneratedPackSHA256 != hex.EncodeToString(sum[:]) {
+			log.Fatal("report sha mismatch")
+		}
+	}
+	fmt.Printf("valid pack: provider=%s dataset=%s rules=%d\n", p.Provider, p.Dataset, len(p.Rules))
 }
-func printReport(r bundled.Report) {
-	b, _ := json.Marshal(r)
-	fmt.Printf("summary: dataset=%s imported=%d re2_ok=%d re2_bad=%d pack_sha256=%s\n", r.Dataset, r.ImportedRecords, r.RE2CompatibleRules, r.RE2IncompatibleRules, r.GeneratedPackSHA256)
-	_ = b
+func printSummary(r bundled.Report) {
+	fmt.Printf("summary: dataset=%s imported=%d empty=%d malformed=%d re2_ok=%d re2_bad=%d pack_sha256=%s\n", r.Dataset, r.ImportedRecords, r.EmptyRecords, r.MalformedRecords, r.RE2CompatibleRules, r.RE2IncompatibleRules, r.GeneratedPackSHA256)
 }

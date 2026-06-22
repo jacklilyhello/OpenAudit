@@ -1011,3 +1011,21 @@ Files:
 
 Notes:
 - Runtime loading and PCRE2 matching are deferred; no full upstream databases or generated packs are bundled.
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Harden NetEase bundled rules Phase A with bounded file reads, strict JSON EOF and duplicate-key rejection, central pack validation, malformed-record reporting, report file generation, pack/report consistency checks, and single-member gzip validation.
+- Improve reproducibility tests, environment override validation, CLI error handling, and Phase A documentation.
+
+Files:
+- internal/bundled/...
+- internal/config/...
+- cmd/bundled-rules/main.go
+- docs/bundled-rules-phase-a.md
+- CODEX.md
+
+Notes:
+- Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.

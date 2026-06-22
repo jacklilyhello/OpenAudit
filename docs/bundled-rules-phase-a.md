@@ -1,6 +1,6 @@
 # Bundled rules Phase A
 
-Phase A adds a local-only foundation for future bundled providers. It does not load or activate bundled packs at runtime, does not add PCRE2 native dependencies, and does not bundle the complete NetEase databases or generated packs.
+Phase A adds a local-only foundation for future bundled providers. It does not load or activate bundled packs at runtime, does not add PCRE2 native dependencies, and does not bundle complete NetEase databases or generated packs.
 
 ## Configuration
 
@@ -24,32 +24,49 @@ bundled_rules:
       remind: false
 ```
 
-`re2` uses Go `regexp` for partial compatibility analysis. `pcre2` is a reserved configuration value for a later optional matcher; Phase A records `not_checked` for PCRE2 and does not enforce PCRE2 availability.
+`re2` uses Go `regexp` for partial compatibility analysis. `pcre2` is reserved for a later optional matcher; Phase A records `not_checked` and does not enforce PCRE2 availability.
 
 ## Local conversion
 
-Use local upstream JSON files only; the CLI performs no network requests:
+Use local upstream JSON files only; the CLI performs no network requests. Non-dry-run conversion requires both a pack path and a report path:
 
 ```bash
 go run ./cmd/bundled-rules convert \
   --input ./SensitiveWords/G79SensitiveWords.json \
   --output ./data/bundled/netease-g79.json.gz \
+  --report ./data/bundled/netease-g79.report.json \
   --dataset g79 \
   --source-repository https://github.com/daijunhaoMinecraft/NeteaseSensitiveWordsProject \
   --source-commit <40-char-sha> \
   --source-file-path SensitiveWords/G79SensitiveWords.json \
   --timestamp 2026-01-01T00:00:00Z
 
-go run ./cmd/bundled-rules validate --input ./data/bundled/netease-g79.json.gz
+go run ./cmd/bundled-rules validate \
+  --input ./data/bundled/netease-g79.json.gz \
+  --report ./data/bundled/netease-g79.report.json
 ```
 
-The converter validates before atomic replacement, emits a concise summary, and preserves previous output on failure.
+`--dry-run` writes neither pack nor report. It prints only a concise human summary unless `--json` is supplied, in which case the machine-readable report JSON is printed to stdout. Non-dry-run conversion validates the generated pack and report before replacement and uses safepath atomic writes for each output; if generation or validation fails, previous files are preserved. The two output writes are staged and checked, but they are not advertised as filesystem-transaction atomic across files.
+
+## Strict parsing policy
+
+The upstream JSON is treated as untrusted data. The parser requires one complete JSON document, rejects trailing objects/tokens/non-whitespace data, requires `regex` to be an object, and uses structured JSON decoding. Duplicate top-level keys, case-insensitive duplicate group names such as `Shield` and `shield`, and duplicate upstream IDs inside a group are rejected as malformed input with the duplicate path in the error. Duplicate regex content under different upstream IDs remains valid and is reported separately.
+
+Empty records are `null`, an empty string, or a whitespace-only string. Malformed records are non-string values such as numbers, booleans, arrays, or objects; reports include dataset, group, upstream ID, value type, and reason, but never complete sensitive regex content. Unknown groups are reported with group name and record count.
+
+## Pack validation, report verification, and limits
+
+`ValidatePack` is the central validation gate for generated and decoded packs. It checks schema version, provider, dataset, source repository, 40-character source commit SHA, safe source file path, 64-character source input SHA-256, license, generator fields, rule count, per-rule provider/dataset/group/type/ID uniqueness, pattern size, metadata size, PCRE2 status, RE2 error consistency, centralized group mapping consistency, and recomputed counts by dataset/group/status.
+
+The declared limits are enforced during conversion and validation: input JSON bytes, compressed pack bytes, uncompressed pack bytes, rule count, pattern bytes, and metadata bytes. Metadata size is the serialized size of rule metadata, tags, description, category, and source. Defaults are sized for the current upstream files while staying conservative: 4 MiB input JSON, 4 MiB compressed pack, 16 MiB uncompressed pack, 20,000 rules, 256 KiB pattern bytes, and 64 KiB metadata bytes.
+
+Reports carry the generated pack SHA-256 and pack size. `validate --report` verifies the pack hash, pack size, provider, dataset, provenance, and counts against the pack.
 
 ## Pack and report format
 
 Packs contain provenance (`source_repository`, pinned `source_commit`, `source_file_path`, source input SHA-256), deterministic timestamp, generator identity, counts, and rules. Rule entries preserve generated ID, provider, dataset, canonical group, upstream ID, original regex, OpenAudit moderation mapping, tags, metadata, RE2 status/error, and PCRE2 status/error.
 
-The external import report contains the generated pack SHA-256, source and output sizes, counts by dataset and all five groups, unknown groups, duplicate identities, duplicate regex content, and compatibility failures identified by rule ID and pattern SHA-256 rather than full regex text.
+The external import report contains the generated pack SHA-256, source and output sizes, counts by dataset and all five groups, unknown groups with record counts, empty and malformed counts, duplicate identities, duplicate regex content, and compatibility failures identified by rule ID and pattern SHA-256 rather than full regex text.
 
 ## Group mappings
 
@@ -61,11 +78,11 @@ The external import report contains the generated pack SHA-256, source and outpu
 
 `replace` and `remind` are OpenAudit moderation mappings and do not fully emulate upstream replacement or reminder behavior. Replacement text is not invented.
 
-## Reproducibility and safety
+## Reproducibility and gzip policy
 
-Generation uses stable ordering, deterministic JSON, fixed gzip compression and header timestamp, no wall-clock timestamps in pack bytes, and `SOURCE_DATE_EPOCH` or an explicit timestamp for provenance. The pack does not contain its own output SHA-256; the report carries the pack SHA-256.
+Generation uses stable ordering, deterministic JSON, fixed gzip compression and header timestamp, no wall-clock timestamps in pack bytes, and either an explicit timestamp or `SOURCE_DATE_EPOCH`. Invalid `SOURCE_DATE_EPOCH` is an error. Different explicit timestamps intentionally change provenance bytes. The pack does not contain its own output SHA-256; the report carries the pack SHA-256.
 
-Conservative limits cover input JSON bytes, compressed and uncompressed pack bytes, rule count, pattern bytes, and metadata bytes. Gzip validation uses limited readers, rejects truncated gzip, rejects unsupported schema versions, and avoids unbounded decompression.
+Phase A accepts exactly one complete gzip member. Concatenated gzip streams, arbitrary trailing bytes, truncated gzip data, CRC errors, oversized compressed input, and oversized decompressed output are rejected.
 
 ## Future runtime position contract
 
