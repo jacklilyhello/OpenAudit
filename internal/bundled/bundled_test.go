@@ -257,6 +257,32 @@ func TestNoLargeFixtures(t *testing.T) {
 func withLim(o Options, l Limits) Options      { o.Limits = l; return o }
 func withPaths(o Options, p, r string) Options { o.OutputPath = p; o.ReportPath = r; return o }
 
+func TestUTCTimestampPolicy(t *testing.T) {
+	p, _, _, _, err := BuildPack([]byte(`{"regex":{"shield":{"1":"ok"}},"settings":{}}`), opt("g79"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(p.SourceTimestamp, "Z") {
+		t.Fatalf("generated timestamp is not canonical UTC: %s", p.SourceTimestamp)
+	}
+	p.SourceTimestamp = "2026-06-22T00:00:00Z"
+	if err := ValidatePack(p, DefaultLimits()); err != nil {
+		t.Fatal(err)
+	}
+	p.SourceTimestamp = "2026-06-22T08:00:00+08:00"
+	if err := ValidatePack(p, DefaultLimits()); err == nil {
+		t.Fatal("non-UTC offset accepted")
+	}
+	p.SourceTimestamp = "2026-06-22T00:00:00+00:00"
+	if err := ValidatePack(p, DefaultLimits()); err == nil {
+		t.Fatal("+00:00 accepted despite non-canonical policy")
+	}
+	p.SourceTimestamp = "not-time"
+	if err := ValidatePack(p, DefaultLimits()); err == nil {
+		t.Fatal("malformed timestamp accepted")
+	}
+}
+
 func TestDuplicateIdentitiesInvariant(t *testing.T) {
 	p, _, _, _, err := BuildPack([]byte(`{"regex":{"shield":{"1":"ok"}},"settings":{}}`), opt("g79"))
 	if err != nil {
@@ -386,66 +412,140 @@ func TestWritePairAtomicRollbackFailures(t *testing.T) {
 	dir := t.TempDir()
 	pack := filepath.Join(dir, "pack.gz")
 	report := filepath.Join(dir, "report.json")
-	os.WriteFile(pack, []byte("oldp"), 0600)
-	os.WriteFile(report, []byte("oldr"), 0600)
+	reset := func() { os.WriteFile(pack, []byte("oldp"), 0600); os.WriteFile(report, []byte("oldr"), 0600) }
 	oldOps := pairOps
 	defer func() { pairOps = oldOps }()
-
-	pairOps = oldOps
-	pairOps.writeFile = func(path string, data []byte, perm os.FileMode) error {
-		if strings.Contains(path, "pack.tmp") {
-			return os.ErrPermission
+	assertOld := func(msg string) {
+		if b, _ := os.ReadFile(pack); string(b) != "oldp" {
+			t.Fatalf("pack changed after %s: %q", msg, string(b))
 		}
-		return os.WriteFile(path, data, perm)
+		if b, _ := os.ReadFile(report); string(b) != "oldr" {
+			t.Fatalf("report changed after %s: %q", msg, string(b))
+		}
 	}
+
+	reset()
+	pairOps = oldOps
+	pairOps.createTemp = func(dir, pattern string) (*os.File, error) { return nil, os.ErrPermission }
 	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
 		t.Fatal("pack staging failure accepted")
 	}
-	if b, _ := os.ReadFile(pack); string(b) != "oldp" {
-		t.Fatal("pack changed after pack staging failure")
-	}
-	pairOps.writeFile = func(path string, data []byte, perm os.FileMode) error {
-		if strings.Contains(path, "report.tmp") {
-			return os.ErrPermission
+	assertOld("pack staging failure")
+
+	reset()
+	pairOps = oldOps
+	created := 0
+	pairOps.createTemp = func(dir, pattern string) (*os.File, error) {
+		created++
+		if created == 2 {
+			return nil, os.ErrPermission
 		}
-		return os.WriteFile(path, data, perm)
+		return os.CreateTemp(dir, pattern)
 	}
 	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
 		t.Fatal("report staging failure accepted")
 	}
-	if b, _ := os.ReadFile(pack); string(b) != "oldp" {
-		t.Fatal("pack changed after staging failure")
-	}
-	pairOps = oldOps
-	count := 0
-	pairOps.rename = func(old, new string) error {
-		if strings.HasSuffix(new, "pack.gz") && strings.Contains(old, ".tmp") {
-			return os.ErrPermission
-		}
-		count++
-		return os.Rename(old, new)
-	}
-	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
-		t.Fatal("first replace failure accepted")
-	}
-	if b, _ := os.ReadFile(pack); string(b) != "oldp" {
-		t.Fatal("pack changed after first replace failure")
-	}
+	assertOld("report staging failure")
+
+	reset()
 	pairOps = oldOps
 	pairOps.rename = func(old, new string) error {
-		if strings.HasSuffix(new, "report.json") && strings.Contains(old, ".tmp") {
+		if old == pack && strings.HasSuffix(new, ".bak") {
 			return os.ErrPermission
 		}
 		return os.Rename(old, new)
 	}
 	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
-		t.Fatal("second replace failure accepted")
+		t.Fatal("pack backup failure accepted")
 	}
-	if b, _ := os.ReadFile(pack); string(b) != "oldp" {
-		t.Fatal("pack rollback failed")
+	assertOld("pack backup failure")
+
+	reset()
+	pairOps = oldOps
+	pairOps.rename = func(old, new string) error {
+		if old == report && strings.HasSuffix(new, ".bak") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
 	}
-	if b, _ := os.ReadFile(report); string(b) != "oldr" {
-		t.Fatal("report rollback failed")
+	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
+		t.Fatal("report backup failure accepted")
+	}
+	assertOld("report backup failure")
+
+	reset()
+	pairOps = oldOps
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(new, "pack.gz") && strings.HasSuffix(old, ".tmp") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
+	}
+	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
+		t.Fatal("pack install failure accepted")
+	}
+	assertOld("pack install failure")
+
+	reset()
+	pairOps = oldOps
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(new, "report.json") && strings.HasSuffix(old, ".tmp") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
+	}
+	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil {
+		t.Fatal("report install failure accepted")
+	}
+	assertOld("report install failure")
+
+	reset()
+	pairOps = oldOps
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(new, "pack.gz") && strings.Contains(old, ".bak") {
+			return os.ErrPermission
+		}
+		if strings.HasSuffix(new, "report.json") && strings.HasSuffix(old, ".tmp") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
+	}
+	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil || !strings.Contains(err.Error(), "restore pack") {
+		t.Fatalf("pack restore failure not reported: %v", err)
+	}
+
+	reset()
+	pairOps = oldOps
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(new, "report.json") && strings.Contains(old, ".bak") {
+			return os.ErrPermission
+		}
+		if strings.HasSuffix(new, "report.json") && strings.HasSuffix(old, ".tmp") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
+	}
+	if err := WritePairAtomic(pack, []byte("newp"), report, []byte("newr")); err == nil || !strings.Contains(err.Error(), "restore report") {
+		t.Fatalf("report restore failure not reported: %v", err)
+	}
+
+	absentPack := filepath.Join(dir, "absent-pack.gz")
+	absentReport := filepath.Join(dir, "absent-report.json")
+	pairOps = oldOps
+	pairOps.rename = func(old, new string) error {
+		if strings.HasSuffix(new, "absent-report.json") && strings.HasSuffix(old, ".tmp") {
+			return os.ErrPermission
+		}
+		return os.Rename(old, new)
+	}
+	if err := WritePairAtomic(absentPack, []byte("newp"), absentReport, []byte("newr")); err == nil {
+		t.Fatal("absent target rollback failure accepted")
+	}
+	if _, err := os.Stat(absentPack); !os.IsNotExist(err) {
+		t.Fatal("invented absent pack")
+	}
+	if _, err := os.Stat(absentReport); !os.IsNotExist(err) {
+		t.Fatal("invented absent report")
 	}
 }
 

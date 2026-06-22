@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/openaudit/openaudit/internal/safepath"
@@ -384,8 +385,8 @@ func ValidatePack(p Pack, lim Limits) error {
 	if p.LicenseIdentifier == "" || p.GeneratorName == "" || p.GeneratorVersion == "" {
 		return errors.New("license and generator fields are required")
 	}
-	if ts, err := time.Parse(time.RFC3339, p.SourceTimestamp); err != nil || !ts.Equal(ts.UTC()) {
-		return errors.New("deterministic source timestamp must be valid UTC RFC3339")
+	if ts, err := time.Parse(time.RFC3339, p.SourceTimestamp); err != nil || !strings.HasSuffix(p.SourceTimestamp, "Z") || ts.Location() != time.UTC {
+		return errors.New("deterministic source timestamp must be canonical UTC RFC3339 with Z suffix")
 	}
 	if p.Counts.DuplicateIdentities != 0 {
 		return errors.New("duplicate identities must be zero in Phase A packs")
@@ -870,17 +871,18 @@ func metadataSize(r PackRule) int {
 var pairOps = filePairOps{}
 
 type filePairOps struct {
-	writeFile func(string, []byte, os.FileMode) error
-	rename    func(string, string) error
-	remove    func(string) error
-	readFile  func(string) ([]byte, error)
+	createTemp func(string, string) (*os.File, error)
+	rename     func(string, string) error
+	remove     func(string) error
+	readFile   func(string) ([]byte, error)
+	syncDir    func(string) error
 }
 
-func (o filePairOps) wf(path string, data []byte, perm os.FileMode) error {
-	if o.writeFile != nil {
-		return o.writeFile(path, data, perm)
+func (o filePairOps) ct(dir, pattern string) (*os.File, error) {
+	if o.createTemp != nil {
+		return o.createTemp(dir, pattern)
 	}
-	return os.WriteFile(path, data, perm)
+	return os.CreateTemp(dir, pattern)
 }
 func (o filePairOps) rn(old, new string) error {
 	if o.rename != nil {
@@ -900,6 +902,12 @@ func (o filePairOps) rf(path string) ([]byte, error) {
 	}
 	// #nosec G304 -- internal rollback helper reads previously resolved operator-supplied staged paths.
 	return os.ReadFile(path)
+}
+func (o filePairOps) sd(path string) error {
+	if o.syncDir != nil {
+		return o.syncDir(path)
+	}
+	return syncDir(path)
 }
 
 func WritePairAtomic(packPath string, packData []byte, reportPath string, reportData []byte) error {
@@ -921,23 +929,23 @@ func WritePairAtomic(packPath string, packData []byte, reportPath string, report
 	if err := os.MkdirAll(parent, 0o750); err != nil {
 		return err
 	}
-	base := ".openaudit-pair-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	packTmp := filepath.Join(parent, base+".pack.tmp")
-	reportTmp := filepath.Join(parent, base+".report.tmp")
-	packBak := filepath.Join(parent, base+".pack.bak")
-	reportBak := filepath.Join(parent, base+".report.bak")
+	packTmp, err := stageTempFile(parent, "pack", packData)
+	if err != nil {
+		return fmt.Errorf("stage pack: %w", err)
+	}
+	reportTmp, err := stageTempFile(parent, "report", reportData)
+	if err != nil {
+		_ = pairOps.rm(packTmp)
+		return fmt.Errorf("stage report: %w", err)
+	}
+	packBak := packTmp + ".bak"
+	reportBak := reportTmp + ".bak"
 	cleanup := []string{packTmp, reportTmp, packBak, reportBak}
 	defer func() {
 		for _, p := range cleanup {
 			_ = pairOps.rm(p)
 		}
 	}()
-	if err := pairOps.wf(packTmp, packData, safepath.RuntimeFilePerm); err != nil {
-		return fmt.Errorf("stage pack: %w", err)
-	}
-	if err := pairOps.wf(reportTmp, reportData, safepath.RuntimeFilePerm); err != nil {
-		return fmt.Errorf("stage report: %w", err)
-	}
 	if b, err := pairOps.rf(packTmp); err != nil || !bytes.Equal(b, packData) {
 		if err != nil {
 			return fmt.Errorf("validate staged pack: %w", err)
@@ -950,48 +958,136 @@ func WritePairAtomic(packPath string, packData []byte, reportPath string, report
 		}
 		return errors.New("validate staged report: content mismatch")
 	}
-	packExisted := false
-	reportExisted := false
-	if _, err := os.Stat(packTarget.String()); err == nil {
-		packExisted = true
-		if err := pairOps.rn(packTarget.String(), packBak); err != nil {
-			return fmt.Errorf("backup pack: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return err
-	}
+	packExisted, reportExisted := false, false
+	packBackedUp, reportBackedUp := false, false
+	packInstalled, reportInstalled := false, false
+	packPathResolved, reportPathResolved := packTarget.String(), reportTarget.String()
 	rollback := func(cause error) error {
 		rbErrs := []string{}
-		_ = pairOps.rm(packTarget.String())
-		_ = pairOps.rm(reportTarget.String())
-		if packExisted {
-			if err := pairOps.rn(packBak, packTarget.String()); err != nil {
-				rbErrs = append(rbErrs, "pack: "+err.Error())
+		if packInstalled {
+			if err := pairOps.rm(packPathResolved); err != nil && !os.IsNotExist(err) {
+				rbErrs = append(rbErrs, "remove installed pack: "+err.Error())
 			}
 		}
-		if reportExisted {
-			if err := pairOps.rn(reportBak, reportTarget.String()); err != nil {
-				rbErrs = append(rbErrs, "report: "+err.Error())
+		if reportInstalled {
+			if err := pairOps.rm(reportPathResolved); err != nil && !os.IsNotExist(err) {
+				rbErrs = append(rbErrs, "remove installed report: "+err.Error())
 			}
+		}
+		if packBackedUp {
+			if err := pairOps.rn(packBak, packPathResolved); err != nil {
+				rbErrs = append(rbErrs, "restore pack: "+err.Error())
+			}
+		}
+		if reportBackedUp {
+			if err := pairOps.rn(reportBak, reportPathResolved); err != nil {
+				rbErrs = append(rbErrs, "restore report: "+err.Error())
+			}
+		}
+		if err := pairOps.sd(parent); err != nil {
+			rbErrs = append(rbErrs, "sync parent: "+err.Error())
 		}
 		if len(rbErrs) > 0 {
 			return fmt.Errorf("%w; rollback failed: %s", cause, strings.Join(rbErrs, "; "))
 		}
 		return cause
 	}
-	if _, err := os.Stat(reportTarget.String()); err == nil {
+	if _, err := os.Stat(packPathResolved); err == nil {
+		packExisted = true
+		if err := pairOps.rn(packPathResolved, packBak); err != nil {
+			return fmt.Errorf("backup pack: %w", err)
+		}
+		packBackedUp = true
+		if err := pairOps.sd(parent); err != nil {
+			return rollback(fmt.Errorf("sync after pack backup: %w", err))
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if _, err := os.Stat(reportPathResolved); err == nil {
 		reportExisted = true
-		if err := pairOps.rn(reportTarget.String(), reportBak); err != nil {
+		if err := pairOps.rn(reportPathResolved, reportBak); err != nil {
 			return rollback(fmt.Errorf("backup report: %w", err))
+		}
+		reportBackedUp = true
+		if err := pairOps.sd(parent); err != nil {
+			return rollback(fmt.Errorf("sync after report backup: %w", err))
 		}
 	} else if !os.IsNotExist(err) {
 		return rollback(err)
 	}
-	if err := pairOps.rn(packTmp, packTarget.String()); err != nil {
+	_ = packExisted
+	_ = reportExisted
+	if err := pairOps.rn(packTmp, packPathResolved); err != nil {
 		return rollback(fmt.Errorf("replace pack: %w", err))
 	}
-	if err := pairOps.rn(reportTmp, reportTarget.String()); err != nil {
+	packInstalled = true
+	if err := pairOps.sd(parent); err != nil {
+		return rollback(fmt.Errorf("sync after pack replace: %w", err))
+	}
+	if err := pairOps.rn(reportTmp, reportPathResolved); err != nil {
 		return rollback(fmt.Errorf("replace report: %w", err))
+	}
+	reportInstalled = true
+	if err := pairOps.sd(parent); err != nil {
+		return rollback(fmt.Errorf("sync after report replace: %w", err))
+	}
+	return nil
+}
+
+func stageTempFile(parent, label string, data []byte) (string, error) {
+	f, err := pairOps.ct(parent, ".openaudit-"+label+"-*.tmp")
+	if err != nil {
+		return "", err
+	}
+	path := f.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = pairOps.rm(path)
+		}
+	}()
+	if err := f.Chmod(safepath.RuntimeFilePerm); err != nil {
+		_ = f.Close()
+		return "", err
+	}
+	n, err := f.Write(data)
+	if err == nil && n != len(data) {
+		err = io.ErrShortWrite
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		if closeErr != nil {
+			return "", fmt.Errorf("%w; close temp: %v", err, closeErr)
+		}
+		return "", err
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+	cleanup = false
+	return path, nil
+}
+
+func syncDir(path string) error {
+	// #nosec G304 -- parent directory was resolved from safepath targets and is opened only for durability sync.
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	err = f.Sync()
+	closeErr := f.Close()
+	if err != nil && !errors.Is(err, syscall.EINVAL) && !errors.Is(err, syscall.ENOTSUP) && !errors.Is(err, syscall.EPERM) {
+		if closeErr != nil {
+			return fmt.Errorf("sync dir: %w; close dir: %v", err, closeErr)
+		}
+		return fmt.Errorf("sync dir: %w", err)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close dir: %w", closeErr)
 	}
 	return nil
 }

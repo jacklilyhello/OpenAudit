@@ -46,7 +46,7 @@ go run ./cmd/bundled-rules validate \
   --report ./data/bundled/netease-g79.report.json
 ```
 
-`--dry-run` writes neither pack nor report. It prints only a concise human summary unless `--json` is supplied, in which case the machine-readable report JSON is printed to stdout. Non-dry-run conversion validates the generated pack and report before replacement and uses a rollback-capable two-output commit helper. The pack and report paths must be different and must share the same parent directory; staged temporary files are validated before replacement, previous targets are backed up, and handled failures attempt to restore both previous files. This is not advertised as crash-proof multi-file filesystem transactionality.
+`--dry-run` writes neither pack nor report. It prints only a concise human summary unless `--json` is supplied, in which case the machine-readable report JSON is printed to stdout. Non-dry-run conversion validates the generated pack and report before replacement and uses a rollback-capable two-output commit helper. The pack and report paths must be different and must share the same parent directory; staged temporary files are validated before replacement, previous targets are backed up, and handled failures attempt to restore both previous files. This is not advertised as crash-proof multi-file filesystem transactionality. After backup and replacement renames, the parent directory is synced where the platform supports directory sync; unsupported directory sync results such as EINVAL/ENOTSUP are tolerated without claiming stronger durability than the filesystem provides.
 
 ## Strict parsing policy
 
@@ -80,7 +80,7 @@ The external import report contains the generated pack SHA-256, source and outpu
 
 ## Reproducibility and gzip policy
 
-Generation uses stable ordering, deterministic JSON, fixed gzip compression and header timestamp, no wall-clock timestamps in pack bytes, and either an explicit timestamp or `SOURCE_DATE_EPOCH`. Invalid `SOURCE_DATE_EPOCH` is an error. Different explicit timestamps intentionally change provenance bytes. The pack does not contain its own output SHA-256; the report carries the pack SHA-256.
+Generation uses stable ordering, deterministic JSON, fixed gzip compression and header timestamp, no wall-clock timestamps in pack bytes, and either an explicit timestamp or `SOURCE_DATE_EPOCH`; pack timestamps are serialized and validated as canonical UTC RFC3339 with a `Z` suffix. Invalid `SOURCE_DATE_EPOCH` is an error. Different explicit timestamps intentionally change provenance bytes. The pack does not contain its own output SHA-256; the report carries the pack SHA-256.
 
 Phase A accepts exactly one complete gzip member. Concatenated gzip streams, arbitrary trailing bytes, truncated gzip data, CRC errors, oversized compressed input, and oversized decompressed output are rejected.
 

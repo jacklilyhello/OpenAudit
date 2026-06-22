@@ -1047,3 +1047,20 @@ Files:
 
 Notes:
 - Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.
+
+
+## Commit pending
+
+Date: 2026-06-22
+
+Summary:
+- Finalize PR #22 Phase A rollback and validation fixes with explicit rollback state tracking, secure same-directory temporary staging, directory sync handling, and canonical UTC timestamp validation.
+- Add deterministic rollback state tests and UTC timestamp policy tests.
+
+Files:
+- internal/bundled/...
+- docs/bundled-rules-phase-a.md
+- CODEX.md
+
+Notes:
+- Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.
