@@ -1,0 +1,31 @@
+name: PCRE2
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pcre2:
+    name: PCRE2 / Optional tagged build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.11"
+          cache: true
+
+      - name: Install PCRE2 development dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libpcre2-dev
+
+      - name: Run optional PCRE2 tests
+        run: make test-pcre2
+
+      - name: Build optional PCRE2 binary
+        run: make build-pcre2

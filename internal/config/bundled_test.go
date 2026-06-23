@@ -11,24 +11,25 @@ func TestBundledDefaultsDisabled(t *testing.T) {
 	if c.BundledRules.Enabled || c.BundledRules.NetEase.Enabled || c.BundledRules.NetEase.Datasets.G79 || c.BundledRules.NetEase.Datasets.X19 {
 		t.Fatal("defaults enabled")
 	}
-	if c.BundledRules.NetEase.Mode != "re2" || !c.BundledRules.NetEase.Groups.Shield || !c.BundledRules.NetEase.Groups.Intercept || c.BundledRules.NetEase.Groups.Replace {
+	if c.BundledRules.NetEase.Mode != "re2" || c.BundledRules.NetEase.RegexEngine != "re2" || !c.BundledRules.NetEase.Groups.Shield || !c.BundledRules.NetEase.Groups.Intercept || c.BundledRules.NetEase.Groups.Replace {
 		t.Fatal("bad defaults")
 	}
 }
 func TestBundledYAMLAndEnv(t *testing.T) {
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "c.yml")
-	os.WriteFile(cfg, []byte("bundled_rules:\n  enabled: true\n  data_dir: /tmp/bundled\n  netease:\n    enabled: true\n    mode: pcre2\n    datasets:\n      g79: true\n    groups:\n      replace: true\n"), 0600)
+	os.WriteFile(cfg, []byte("bundled_rules:\n  enabled: true\n  data_dir: /tmp/bundled\n  netease:\n    enabled: true\n    regex_engine: pcre2\n    datasets:\n      g79: true\n    groups:\n      replace: true\n"), 0600)
 	c, err := Load(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !c.BundledRules.Enabled || c.BundledRules.NetEase.Mode != "pcre2" || !c.BundledRules.NetEase.Datasets.G79 || !c.BundledRules.NetEase.Groups.Replace {
+	if !c.BundledRules.Enabled || c.BundledRules.NetEase.RegexEngine != "pcre2" || !c.BundledRules.NetEase.Datasets.G79 || !c.BundledRules.NetEase.Groups.Replace {
 		t.Fatal("yaml not loaded")
 	}
+	t.Setenv("OPENAUDIT_BUNDLED_RULES_NETEASE_REGEX_ENGINE", "re2")
 	t.Setenv("OPENAUDIT_BUNDLED_RULES_NETEASE_DATASETS_X19", "true")
 	c, err = Load(cfg)
-	if err != nil || !c.BundledRules.NetEase.Datasets.X19 {
+	if err != nil || !c.BundledRules.NetEase.Datasets.X19 || c.BundledRules.NetEase.RegexEngine != "re2" {
 		t.Fatalf("env: %v", err)
 	}
 	t.Setenv("OPENAUDIT_BUNDLED_RULES_NETEASE_DATASETS_X19", "   ")

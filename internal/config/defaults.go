@@ -39,7 +39,7 @@ func Defaults() Config {
 			SnapshotDir:       "./storage/rule-history/snapshots",
 		},
 		Storage:      StorageConfig{Backend: "sqlite", Root: "./storage", SQLitePath: "data/openaudit.db", LegacyJSONLFallback: true, AutoMigrate: true},
-		BundledRules: BundledRulesConfig{DataDir: "./data/bundled", NetEase: NetEaseBundledConfig{Mode: "re2", Groups: NetEaseGroupsConfig{Shield: true, Intercept: true}}},
+		BundledRules: BundledRulesConfig{DataDir: "./data/bundled", NetEase: NetEaseBundledConfig{Mode: "re2", RegexEngine: "re2", Groups: NetEaseGroupsConfig{Shield: true, Intercept: true}}},
 		Importer: ImporterConfig{
 			DefaultInputDir:       "./external-rules",
 			DefaultOutputDir:      "./data/imported",

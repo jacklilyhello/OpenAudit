@@ -6,6 +6,7 @@ Release-note style changes for OpenAudit. For detailed historical implementation
 
 ### Added
 
+- Optional PCRE2 runtime backend for default-disabled NetEase bundled rules, activated only by `bundled_rules.netease.regex_engine: pcre2` in `-tags pcre2` CGO builds with `libpcre2-8`, while preserving default RE2 and CGO-free builds.
 - Open-source content audit API for text moderation and risk scoring, including normalized matching, optional explanations, batching, request limits, and health/version endpoints.
 - Rule management capabilities for YAML-backed rules, including create/update/delete, enable/disable, reload, validation, history, diffs, and rollback for API-managed custom rules.
 - External rule import workflow with Sensitive-lexicon-compatible imports, dry-run reports, import batch metadata, local reload hooks, and safeguards against committing large or private generated rulesets.
