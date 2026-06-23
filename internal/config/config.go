@@ -98,10 +98,11 @@ type BundledRulesConfig struct {
 	NetEase NetEaseBundledConfig `yaml:"netease" json:"netease"`
 }
 type NetEaseBundledConfig struct {
-	Enabled  bool                  `yaml:"enabled" json:"enabled"`
-	Mode     string                `yaml:"mode" json:"mode"`
-	Datasets NetEaseDatasetsConfig `yaml:"datasets" json:"datasets"`
-	Groups   NetEaseGroupsConfig   `yaml:"groups" json:"groups"`
+	Enabled     bool                  `yaml:"enabled" json:"enabled"`
+	Mode        string                `yaml:"mode" json:"mode"`
+	RegexEngine string                `yaml:"regex_engine" json:"regex_engine"`
+	Datasets    NetEaseDatasetsConfig `yaml:"datasets" json:"datasets"`
+	Groups      NetEaseGroupsConfig   `yaml:"groups" json:"groups"`
 }
 type NetEaseDatasetsConfig struct {
 	G79 bool `yaml:"g79" json:"g79"`

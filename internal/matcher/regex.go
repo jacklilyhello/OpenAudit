@@ -2,26 +2,36 @@ package matcher
 
 import (
 	"fmt"
+	"regexp"
+
 	"github.com/openaudit/openaudit/internal/risk"
 	"github.com/openaudit/openaudit/internal/rules"
-	"regexp"
 )
 
 type RegexRule struct {
 	Rule     rules.Rule
-	Patterns []*regexp.Regexp
+	Patterns []RegexBackend
 }
+
+type re2Pattern struct{ re *regexp.Regexp }
+
+func (p re2Pattern) FindAllStringIndex(text string) [][]int { return p.re.FindAllStringIndex(text, -1) }
+
 type RegexMatcher struct{ Rules []RegexRule }
 
 func NewRegexMatcher(rs []RegexRule) RegexMatcher { return RegexMatcher{Rules: rs} }
 func CompileRegexRules(rs []rules.Rule) ([]RegexRule, error) {
+	return CompileRegexRulesWithEngine(rs, RegexEngineRE2)
+}
+
+func CompileRegexRulesWithEngine(rs []rules.Rule, engine string) ([]RegexRule, error) {
 	out := make([]RegexRule, 0, len(rs))
 	for _, r := range rs {
 		rr := RegexRule{Rule: r}
 		for _, p := range r.Patterns {
-			re, err := regexp.Compile(p)
+			re, err := compileRegexPattern(engine, p)
 			if err != nil {
-				return nil, fmt.Errorf("invalid regex in %s: %w", r.Path, err)
+				return nil, fmt.Errorf("invalid %s regex in %s: %w", engine, r.Path, err)
 			}
 			rr.Patterns = append(rr.Patterns, re)
 		}
@@ -29,6 +39,21 @@ func CompileRegexRules(rs []rules.Rule) ([]RegexRule, error) {
 	}
 	return out, nil
 }
+func compileRegexPattern(engine, pattern string) (RegexBackend, error) {
+	switch engine {
+	case "", RegexEngineRE2:
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, err
+		}
+		return re2Pattern{re: re}, nil
+	case RegexEnginePCRE2:
+		return CompilePCRE2Pattern(pattern)
+	default:
+		return nil, fmt.Errorf("unsupported regex engine %q", engine)
+	}
+}
+
 func (m RegexMatcher) Match(text string) []Hit { return MatchRegex(text, m.Rules) }
 func byteToRuneOffsets(s string, b0, b1 int) (int, int) {
 	r0, r1 := 0, 0
@@ -46,7 +71,7 @@ func MatchRegex(text string, rs []RegexRule) []Hit {
 	var hits []Hit
 	for _, rr := range rs {
 		for _, re := range rr.Patterns {
-			for _, loc := range re.FindAllStringIndex(text, -1) {
+			for _, loc := range re.FindAllStringIndex(text) {
 				m := text[loc[0]:loc[1]]
 				s, e := byteToRuneOffsets(text, loc[0], loc[1])
 				r := rr.Rule
