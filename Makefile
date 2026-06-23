@@ -6,7 +6,7 @@ BIN := $(BIN_DIR)/$(APP_NAME)
 IMAGE := openaudit:local
 GO_FILES := $(shell find . -name '*.go' -not -path './vendor/*')
 
-.PHONY: help fmt fmt-check vet test build run clean ci govulncheck gosec docker-build docker-run smoke e2e
+.PHONY: help fmt fmt-check vet test build run clean ci govulncheck gosec docker-build docker-run smoke e2e verify-bundled-netease regenerate-bundled-netease
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "OpenAudit development targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -54,3 +54,9 @@ smoke: ## Run local smoke test script
 
 e2e: ## Run deterministic end-to-end verification
 	./scripts/e2e.sh
+
+verify-bundled-netease: ## Verify committed NetEase Phase C artifacts without network or writes
+	go run ./cmd/sync-netease-rules -mode=verify
+
+regenerate-bundled-netease: ## Regenerate committed NetEase Phase C artifacts from committed snapshots
+	go run ./cmd/sync-netease-rules -mode=regenerate

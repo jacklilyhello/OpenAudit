@@ -557,3 +557,78 @@ func TestBundledConcurrentAuditRulesStatsDuringReload(t *testing.T) {
 	close(stop)
 	wg.Wait()
 }
+
+func copyCommittedPack(t *testing.T, dir, name string) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "data", "bundled", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCommittedNetEasePhaseCPacks(t *testing.T) {
+	local := t.TempDir()
+	dir := t.TempDir()
+	copyCommittedPack(t, dir, bundled.NetEaseG79Filename)
+	copyCommittedPack(t, dir, bundled.NetEaseX19Filename)
+	cfg := config.Defaults().BundledRules
+	cfg.DataDir = dir
+	if e, err := NewWithOptions(local, Options{BundledRules: &cfg}); err != nil || e.Audit("暴政", true).Matched {
+		t.Fatalf("default disabled should not match; err=%v", err)
+	}
+	cfg.Enabled = true
+	cfg.NetEase.Enabled = true
+	cfg.NetEase.Datasets.G79 = true
+	e, err := NewWithOptions(local, Options{BundledRules: &cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !e.Audit("暴政", true).Matched {
+		t.Fatal("expected stable G79 upstream rule to match")
+	}
+	st := e.Stats().BundledRules.(bundled.RuntimeStats).Providers[bundled.ProviderNetEase]
+	if !st.Datasets["g79"].Loaded || st.Datasets["x19"].Loaded || st.Datasets["g79"].LicenseIdentifier != "GPL-3.0-only" {
+		t.Fatalf("bad G79 provenance stats: %#v", st.Datasets)
+	}
+	if st.RE2IncompatibleRules == 0 {
+		t.Fatal("expected incompatible rules to remain reported")
+	}
+	if e.Audit("昵称测试", true).Matched {
+		t.Fatal("disabled nickname group should not activate")
+	}
+	cfg.NetEase.Datasets.G79 = false
+	cfg.NetEase.Datasets.X19 = true
+	e, err = NewWithOptions(local, Options{BundledRules: &cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !e.Audit("暴政", true).Matched {
+		t.Fatal("expected stable X19 upstream rule to match")
+	}
+	st = e.Stats().BundledRules.(bundled.RuntimeStats).Providers[bundled.ProviderNetEase]
+	if st.Datasets["g79"].Loaded || !st.Datasets["x19"].Loaded || st.Datasets["x19"].LicenseIdentifier != "GPL-3.0-only" {
+		t.Fatalf("bad X19 provenance stats: %#v", st.Datasets)
+	}
+	cfg.NetEase.Datasets.G79 = true
+	e, err = NewWithOptions(local, Options{BundledRules: &cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st = e.Stats().BundledRules.(bundled.RuntimeStats).Providers[bundled.ProviderNetEase]
+	if !st.Datasets["g79"].Loaded || !st.Datasets["x19"].Loaded || st.ActivatedRules == 0 {
+		t.Fatalf("expected both datasets loaded: %#v", st)
+	}
+	oldStats := e.Stats()
+	if err := os.WriteFile(filepath.Join(dir, bundled.NetEaseG79Filename), []byte("bad gzip"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Reload(); err == nil {
+		t.Fatal("expected failed reload")
+	}
+	if !reflect.DeepEqual(oldStats, e.Stats()) || !e.Audit("暴政", true).Matched {
+		t.Fatal("failed reload did not preserve old committed pack state")
+	}
+}
