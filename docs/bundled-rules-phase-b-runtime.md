@@ -52,6 +52,7 @@ bundled_rules:
   netease:
     enabled: true
     mode: re2
+    regex_engine: re2
     datasets:
       g79: true
       x19: false
@@ -69,9 +70,17 @@ Group activation is deployment-controlled. `replace`, `nickname`, and `remind` c
 
 ## Matching and compatibility
 
-Phase B supports Go RE2-compatible regex matching only. In `re2` mode, RE2-compatible Pack rules in enabled datasets and groups are converted to ordinary regex rules and merged before matcher compilation. RE2-incompatible rules, including lookahead, lookbehind, and backreference patterns, are skipped and counted in runtime statistics; patterns are not rewritten.
+RE2 remains the default runtime regex backend. In `re2` mode, RE2-compatible Pack rules in enabled datasets and groups are converted to ordinary regex rules and merged before matcher compilation. RE2-incompatible rules, including lookahead, lookbehind, and backreference patterns, are skipped and counted in runtime statistics; patterns are not rewritten.
 
-`mode: pcre2` returns a clear unsupported-mode error when NetEase is effectively enabled. Disabled NetEase configuration does not fail merely because `mode` is `pcre2`. Phase B adds no CGO or PCRE2 dependency and preserves `CGO_ENABLED=0` builds.
+Phase D adds optional PCRE2 support. Enable it only in a binary built with `CGO_ENABLED=1 go build -tags pcre2 ./...` and system `libpcre2-8` headers/library installed (for example Debian/Ubuntu `libpcre2-dev`). Then set:
+
+```yaml
+bundled_rules:
+  netease:
+    regex_engine: pcre2
+```
+
+Default builds do not import PCRE2 or require CGO, and `CGO_ENABLED=0 go build ./...` remains supported. If `regex_engine: pcre2` is requested in a default build, startup/reload fails clearly before changing active engine state. Disabled NetEase configuration does not fail merely because PCRE2 is configured. OpenAudit uses direct cgo bindings to the PCRE2 8-bit API (BSD-licensed PCRE2 project), compiles patterns during startup/reload rather than per request, frees compiled code through Go finalizers, and applies hardcoded PCRE2 match/depth limits to reduce catastrophic backtracking risk. Operators should treat PCRE2 as more expressive and potentially more expensive than RE2.
 
 ## Atomic reload and validation
 
@@ -81,7 +90,7 @@ Runtime rejects traversal, symlink escape, unexpected file types, oversized comp
 
 ## Statistics
 
-Rules statistics remain backward-compatible and add `bundled_rules` with provider status, selected mode, dataset enabled/loaded state, examined and activated rule counts, configuration-disabled counts, RE2-compatible/incompatible counts, group counts, source commit, source input SHA-256, and license identifier. Compatibility counters cover all examined Pack rules from enabled datasets before group filtering; `configuration_disabled_rules` counts RE2-compatible rules skipped only because their deployment group is disabled. Complete regex content and raw unsafe validation errors are not exposed.
+Rules statistics remain backward-compatible and add `bundled_rules` with provider status, selected mode, selected `regex_engine`, dataset enabled/loaded state, total examined and activated counts, configuration-disabled counts, backend-unavailable skipped counts, RE2-compatible/incompatible counts, PCRE2-compatible/incompatible counts, group counts, source commit, source input SHA-256, and license identifier. Compatibility counters cover all examined Pack rules from enabled datasets before group filtering; `configuration_disabled_rules` counts rules skipped only because their deployment group is disabled. Complete regex content and raw unsafe validation errors are not exposed.
 
 ## Distribution and license scope
 
