@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "provider": "netease",
+  "upstream_repository": "https://github.com/daijunhaoMinecraft/NeteaseSensitiveWordsProject",
+  "pinned_commit": "97d3236b999c5f95c7adac1debf7fffb81d8bda2",
+  "retrieval_timestamp": "2026-06-23T00:00:00Z",
+  "deterministic_source_timestamp": "2026-06-19T22:03:48Z",
+  "license_identifier": "GPL-3.0-only",
+  "generator_name": "openaudit-sync-netease-rules",
+  "generator_version": "phase-c",
+  "sources": [
+    {
+      "path": "LICENSE",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "byte_size": 35149
+    },
+    {
+      "path": "SensitiveWords/G79SensitiveWords.json",
+      "sha256": "f398f68c5af1b2b92e01b8dc895ddecef86b72cf2783c798566bab604b5aa07d",
+      "byte_size": 1548358,
+      "source_rule_count": 1679
+    },
+    {
+      "path": "SensitiveWords/X19SensitiveWords.json",
+      "sha256": "5f8f7e4d6b2436a4b47e5d8c5fa2e936d06b6c18e45689ebf8aa712097baeba4",
+      "byte_size": 1498002,
+      "source_rule_count": 1618
+    }
+  ],
+  "datasets": [
+    {
+      "dataset": "g79",
+      "source_path": "SensitiveWords/G79SensitiveWords.json",
+      "source_sha256": "f398f68c5af1b2b92e01b8dc895ddecef86b72cf2783c798566bab604b5aa07d",
+      "source_byte_size": 1548358,
+      "source_rule_count": 1679,
+      "generated_pack_path": "data/bundled/netease-g79.json.gz",
+      "generated_pack_sha256": "0f8d487d940685753896f20d6473482d1de5743e2392e2b7acfb4e36fe4ef2d7",
+      "generated_pack_byte_size": 637885,
+      "generated_report_path": "data/bundled/netease-g79.report.json",
+      "generated_report_sha256": "4925fc6ec4dea0adffdac09294587ef9b3c7899089a0008cbd0bda8b9430e975",
+      "generated_report_byte_size": 1025604,
+      "import_statistics": {
+        "total_source_rules": 1679,
+        "parsed_rules": 1679,
+        "imported_records": 1679,
+        "empty_records": 0,
+        "malformed_records": 0,
+        "unknown_records": 0,
+        "duplicate_identities": 0,
+        "duplicate_regex_content": 358,
+        "counts_by_group": [
+          {
+            "name": "shield",
+            "count": 609
+          },
+          {
+            "name": "intercept",
+            "count": 167
+          },
+          {
+            "name": "replace",
+            "count": 1
+          },
+          {
+            "name": "nickname",
+            "count": 899
+          },
+          {
+            "name": "remind",
+            "count": 3
+          }
+        ]
+      },
+      "re2_compatibility_statistics": {
+        "compatible_rules": 519,
+        "incompatible_rules": 1160
+      },
+      "incompatible_reason_breakdown": {
+        "backreference": 1,
+        "invalid_syntax": 171,
+        "lookahead": 3,
+        "lookbehind": 833,
+        "unsupported_escape": 152
+      }
+    },
+    {
+      "dataset": "x19",
+      "source_path": "SensitiveWords/X19SensitiveWords.json",
+      "source_sha256": "5f8f7e4d6b2436a4b47e5d8c5fa2e936d06b6c18e45689ebf8aa712097baeba4",
+      "source_byte_size": 1498002,
+      "source_rule_count": 1618,
+      "generated_pack_path": "data/bundled/netease-x19.json.gz",
+      "generated_pack_sha256": "be30a7d16847b25446d630b01164088a203b320b6fccfe364ae9dbbafb66a3e5",
+      "generated_pack_byte_size": 623335,
+      "generated_report_path": "data/bundled/netease-x19.report.json",
+      "generated_report_sha256": "45c7f1fc578ef4c2263ed60e8bfb0afd96647293b40a42702daddabfbe8d87e2",
+      "generated_report_byte_size": 1003172,
+      "import_statistics": {
+        "total_source_rules": 1618,
+        "parsed_rules": 1618,
+        "imported_records": 1618,
+        "empty_records": 0,
+        "malformed_records": 0,
+        "unknown_records": 0,
+        "duplicate_identities": 0,
+        "duplicate_regex_content": 380,
+        "counts_by_group": [
+          {
+            "name": "shield",
+            "count": 597
+          },
+          {
+            "name": "intercept",
+            "count": 123
+          },
+          {
+            "name": "replace",
+            "count": 1
+          },
+          {
+            "name": "nickname",
+            "count": 894
+          },
+          {
+            "name": "remind",
+            "count": 3
+          }
+        ]
+      },
+      "re2_compatibility_statistics": {
+        "compatible_rules": 520,
+        "incompatible_rules": 1098
+      },
+      "incompatible_reason_breakdown": {
+        "backreference": 2,
+        "invalid_syntax": 155,
+        "lookahead": 4,
+        "lookbehind": 816,
+        "unsupported_escape": 121
+      }
+    }
+  ]
+}
