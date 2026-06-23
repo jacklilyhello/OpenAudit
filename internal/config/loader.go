@@ -98,6 +98,9 @@ func applyEnv(c *Config) error {
 	if v := strings.TrimSpace(os.Getenv("OPENAUDIT_BUNDLED_RULES_NETEASE_MODE")); v != "" {
 		c.BundledRules.NetEase.Mode = v
 	}
+	if v := strings.TrimSpace(os.Getenv("OPENAUDIT_BUNDLED_RULES_NETEASE_REGEX_ENGINE")); v != "" {
+		c.BundledRules.NetEase.RegexEngine = v
+	}
 	return nil
 }
 func fill(c *Config) {
@@ -125,6 +128,12 @@ func fill(c *Config) {
 	}
 	if c.BundledRules.NetEase.Mode == "" {
 		c.BundledRules.NetEase.Mode = d.BundledRules.NetEase.Mode
+	}
+	if c.BundledRules.NetEase.RegexEngine == "" {
+		c.BundledRules.NetEase.RegexEngine = c.BundledRules.NetEase.Mode
+	}
+	if c.BundledRules.NetEase.Mode == "" {
+		c.BundledRules.NetEase.Mode = c.BundledRules.NetEase.RegexEngine
 	}
 	if c.Admin.Path == "" {
 		c.Admin.Path = d.Admin.Path
@@ -393,7 +402,14 @@ func safeCIDRs(xs []string) bool {
 }
 
 func validateBundledRules(b BundledRulesConfig) error {
-	if b.NetEase.Mode != "re2" && b.NetEase.Mode != "pcre2" {
+	engine := b.NetEase.RegexEngine
+	if engine == "" {
+		engine = b.NetEase.Mode
+	}
+	if engine != "re2" && engine != "pcre2" {
+		return fmt.Errorf("invalid bundled_rules.netease.regex_engine %q: must be re2 or pcre2", engine)
+	}
+	if b.NetEase.Mode != "" && b.NetEase.Mode != "re2" && b.NetEase.Mode != "pcre2" {
 		return fmt.Errorf("invalid bundled_rules.netease.mode %q: must be re2 or pcre2", b.NetEase.Mode)
 	}
 	return validateConfigPathComponentAware("bundled_rules.data_dir", b.DataDir, true)

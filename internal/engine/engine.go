@@ -64,7 +64,17 @@ func PrepareWithOptions(root string, opt Options) (rules.Set, []matcher.Matcher,
 			return set, nil, stats, err
 		}
 	}
-	ms, err := PrepareSet(set)
+	engineName := "re2"
+	if opt.BundledRules != nil {
+		engineName = opt.BundledRules.NetEase.RegexEngine
+		if opt.BundledRules.NetEase.Mode != "" && opt.BundledRules.NetEase.Mode != engineName && engineName == matcher.RegexEngineRE2 {
+			engineName = opt.BundledRules.NetEase.Mode
+		}
+		if engineName == "" {
+			engineName = opt.BundledRules.NetEase.Mode
+		}
+	}
+	ms, err := PrepareSetWithRegexEngine(set, engineName)
 	return set, ms, bst, err
 }
 func NewFromSet(set rules.Set) (*Engine, error) {
@@ -76,8 +86,11 @@ func NewFromSet(set rules.Set) (*Engine, error) {
 	return &Engine{set: set, keyword: ms[0], regex: ms[1], domain: ms[2], pinyin: ms[3], homophone: ms[4]}, nil
 }
 func PrepareSet(set rules.Set) ([]matcher.Matcher, error) {
+	return PrepareSetWithRegexEngine(set, matcher.RegexEngineRE2)
+}
+func PrepareSetWithRegexEngine(set rules.Set, regexEngine string) ([]matcher.Matcher, error) {
 	set = rules.ExpandVariantRules(set)
-	rr, err := matcher.CompileRegexRules(set.RegexRules)
+	rr, err := matcher.CompileRegexRulesWithEngine(set.RegexRules, regexEngine)
 	if err != nil {
 		return nil, err
 	}

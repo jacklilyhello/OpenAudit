@@ -1081,3 +1081,49 @@ Files:
 
 Notes:
 - Runtime loading and PCRE2 matching remain deferred; no full upstream databases or generated packs are bundled.
+
+## Commit pending
+
+Date: 2026-06-23
+
+Summary:
+- Implement NetEase Integration Phase D optional PCRE2 runtime support behind explicit configuration and the `pcre2` build tag.
+- Preserve default RE2 behavior and CGO-free builds, with clear unsupported errors when PCRE2 is requested in default builds.
+- Add runtime statistics for selected regex backend, PCRE2 compatibility, backend-unavailable skips, and dataset/group-disabled skips.
+- Add direct PCRE2 8-bit cgo binding with compile-time pattern construction and hardcoded match/depth limits.
+- Update documentation, example config, Makefile optional PCRE2 targets, and tests.
+
+Files:
+- internal/matcher/...
+- internal/bundled/...
+- internal/engine/...
+- internal/config/...
+- README.md
+- docs/bundled-rules-phase-b-runtime.md
+- config.example.yml
+- Makefile
+- CHANGELOG.md
+- CODEX.md
+
+Notes:
+- Default builds do not import PCRE2 or require CGO.
+- Runtime downloads, automatic network updates, Docker/release packaging changes, root license changes, and NetEase data relicensing are not included.
+
+## Commit pending
+
+Date: 2026-06-23
+
+Summary:
+- Add a separate optional PCRE2 GitHub Actions workflow for tagged tests and builds with system PCRE2 dependencies.
+- Fix PCRE2 backreference test patterns so tagged builds exercise native backreference support correctly.
+- Add PCRE2-tagged bundled runtime coverage confirming additional compatible NetEase rules activate without changing default RE2 behavior.
+
+Files:
+- .github/workflows/pcre2.yml
+- internal/matcher/pcre2_test.go
+- internal/engine/bundled_runtime_test.go
+- internal/engine/bundled_runtime_pcre2_test.go
+- CODEX.md
+
+Notes:
+- Default CI and default CGO-free builds remain independent of PCRE2.

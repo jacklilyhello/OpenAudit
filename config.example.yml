@@ -163,7 +163,8 @@ bundled_rules:
   data_dir: ./data/bundled
   netease:
     enabled: false
-    mode: re2 # pcre2 is accepted in config but unsupported at runtime when enabled in Phase B.
+    mode: re2 # legacy alias for regex_engine; RE2 remains the default.
+    regex_engine: re2 # optional: set to pcre2 only in builds made with -tags pcre2 and CGO/libpcre2-8.
     datasets:
       g79: false
       x19: false

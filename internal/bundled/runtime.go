@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/openaudit/openaudit/internal/config"
+	"github.com/openaudit/openaudit/internal/matcher"
 	"github.com/openaudit/openaudit/internal/rules"
 	"github.com/openaudit/openaudit/internal/safepath"
 )
@@ -23,48 +24,56 @@ type RuntimeStats struct {
 }
 
 type ProviderRuntimeStats struct {
-	Enabled                       bool                    `json:"enabled"`
-	Status                        string                  `json:"status"`
-	Mode                          string                  `json:"mode"`
-	Datasets                      map[string]DatasetStats `json:"datasets"`
-	Groups                        map[string]int          `json:"groups"`
-	TotalPackRulesExamined        int                     `json:"total_pack_rules_examined"`
-	ActivatedRules                int                     `json:"activated_rules"`
-	ConfigurationDisabledRules    int                     `json:"configuration_disabled_rules"`
-	RE2CompatibleRules            int                     `json:"re2_compatible_rules"`
-	RE2IncompatibleRules          int                     `json:"re2_incompatible_rules"`
-	IncompatibleCompatibilityHint map[string]int          `json:"incompatible_compatibility_hints,omitempty"`
+	Enabled                        bool                    `json:"enabled"`
+	Status                         string                  `json:"status"`
+	Mode                           string                  `json:"mode"`
+	Datasets                       map[string]DatasetStats `json:"datasets"`
+	Groups                         map[string]int          `json:"groups"`
+	TotalPackRulesExamined         int                     `json:"total_pack_rules_examined"`
+	RegexEngine                    string                  `json:"regex_engine"`
+	ActivatedRules                 int                     `json:"activated_rules"`
+	ConfigurationDisabledRules     int                     `json:"configuration_disabled_rules"`
+	BackendUnavailableSkippedRules int                     `json:"backend_unavailable_skipped_rules"`
+	RE2CompatibleRules             int                     `json:"re2_compatible_rules"`
+	RE2IncompatibleRules           int                     `json:"re2_incompatible_rules"`
+	PCRE2CompatibleRules           int                     `json:"pcre2_compatible_rules"`
+	PCRE2IncompatibleRules         int                     `json:"pcre2_incompatible_rules"`
+	IncompatibleCompatibilityHint  map[string]int          `json:"incompatible_compatibility_hints,omitempty"`
 }
 
 type DatasetStats struct {
-	Enabled                bool   `json:"enabled"`
-	Loaded                 bool   `json:"loaded"`
-	PackRulesExamined      int    `json:"pack_rules_examined"`
-	ActivatedRules         int    `json:"activated_rules"`
-	ConfigurationDisabled  int    `json:"configuration_disabled_rules"`
-	RE2CompatibleRules     int    `json:"re2_compatible_rules"`
-	RE2IncompatibleRules   int    `json:"re2_incompatible_rules"`
-	SourceCommit           string `json:"source_commit,omitempty"`
-	SourceInputSHA256      string `json:"source_input_sha256,omitempty"`
-	LicenseIdentifier      string `json:"license_identifier,omitempty"`
-	DeterministicTimestamp string `json:"deterministic_source_timestamp,omitempty"`
+	Enabled                        bool   `json:"enabled"`
+	Loaded                         bool   `json:"loaded"`
+	PackRulesExamined              int    `json:"pack_rules_examined"`
+	ActivatedRules                 int    `json:"activated_rules"`
+	ConfigurationDisabled          int    `json:"configuration_disabled_rules"`
+	BackendUnavailableSkippedRules int    `json:"backend_unavailable_skipped_rules"`
+	RE2CompatibleRules             int    `json:"re2_compatible_rules"`
+	RE2IncompatibleRules           int    `json:"re2_incompatible_rules"`
+	PCRE2CompatibleRules           int    `json:"pcre2_compatible_rules"`
+	PCRE2IncompatibleRules         int    `json:"pcre2_incompatible_rules"`
+	SourceCommit                   string `json:"source_commit,omitempty"`
+	SourceInputSHA256              string `json:"source_input_sha256,omitempty"`
+	LicenseIdentifier              string `json:"license_identifier,omitempty"`
+	DeterministicTimestamp         string `json:"deterministic_source_timestamp,omitempty"`
 }
 
 func LoadRuntime(cfg config.BundledRulesConfig) ([]rules.Rule, RuntimeStats, error) {
 	st := RuntimeStats{Providers: map[string]ProviderRuntimeStats{}}
-	ps := ProviderRuntimeStats{Enabled: cfg.Enabled && cfg.NetEase.Enabled, Mode: cfg.NetEase.Mode, Status: "disabled", Datasets: datasetEnabled(cfg), Groups: emptyGroups(), IncompatibleCompatibilityHint: map[string]int{}}
+	engine := effectiveRegexEngine(cfg)
+	ps := ProviderRuntimeStats{Enabled: cfg.Enabled && cfg.NetEase.Enabled, Mode: cfg.NetEase.Mode, RegexEngine: engine, Status: "disabled", Datasets: datasetEnabled(cfg), Groups: emptyGroups(), IncompatibleCompatibilityHint: map[string]int{}}
 	st.Providers[ProviderNetEase] = ps
 	if !cfg.Enabled || !cfg.NetEase.Enabled {
 		return nil, st, nil
 	}
 	ps.Status = "enabled"
-	if cfg.NetEase.Mode == "pcre2" {
+	if engine == matcher.RegexEnginePCRE2 && !matcher.PCRE2Available() {
 		st.Providers[ProviderNetEase] = ps
-		return nil, st, errors.New("bundled_rules.netease.mode pcre2 is unsupported: PCRE2 runtime support is not included in this build/phase")
+		return nil, st, errors.New("bundled_rules.netease.regex_engine pcre2 is unsupported: PCRE2 runtime support is not included in this build")
 	}
-	if cfg.NetEase.Mode != "re2" {
+	if engine != matcher.RegexEngineRE2 && engine != matcher.RegexEnginePCRE2 {
 		st.Providers[ProviderNetEase] = ps
-		return nil, st, fmt.Errorf("unsupported bundled_rules.netease.mode %q", cfg.NetEase.Mode)
+		return nil, st, fmt.Errorf("unsupported bundled_rules.netease.regex_engine %q", engine)
 	}
 	selected := selectedDatasets(cfg.NetEase.Datasets)
 	if len(selected) == 0 {
@@ -109,6 +118,24 @@ func LoadRuntime(cfg config.BundledRulesConfig) ([]rules.Rule, RuntimeStats, err
 				ps.RE2IncompatibleRules++
 				dst.RE2IncompatibleRules++
 				ps.IncompatibleCompatibilityHint[sanitizeHint(pr.RE2FeatureHint)]++
+			}
+			pcreOK := pr.RE2Compatible
+			if engine == matcher.RegexEnginePCRE2 {
+				pcreOK = pcre2Compatible(pr)
+			}
+			if pcreOK {
+				ps.PCRE2CompatibleRules++
+				dst.PCRE2CompatibleRules++
+			} else {
+				ps.PCRE2IncompatibleRules++
+				dst.PCRE2IncompatibleRules++
+			}
+			if engine == matcher.RegexEngineRE2 && !pr.RE2Compatible {
+				ps.BackendUnavailableSkippedRules++
+				dst.BackendUnavailableSkippedRules++
+				continue
+			}
+			if engine == matcher.RegexEnginePCRE2 && !pcreOK {
 				continue
 			}
 			if !groupEnabled(cfg.NetEase.Groups, pr.Group) {
@@ -242,4 +269,27 @@ func MergeRules(local rules.Set, extra []rules.Rule) (rules.Set, error) {
 	}
 	sort.SliceStable(local.Rules, func(i, j int) bool { return local.Rules[i].ID < local.Rules[j].ID })
 	return local, nil
+}
+
+func effectiveRegexEngine(cfg config.BundledRulesConfig) string {
+	mode := strings.ToLower(strings.TrimSpace(cfg.NetEase.Mode))
+	engine := strings.ToLower(strings.TrimSpace(cfg.NetEase.RegexEngine))
+	if mode != "" && mode != engine && engine == matcher.RegexEngineRE2 {
+		return mode
+	}
+	if engine != "" {
+		return engine
+	}
+	return mode
+}
+
+func pcre2Compatible(pr PackRule) bool {
+	switch pr.PCRE2Status {
+	case PCRE2Compatible:
+		return true
+	case PCRE2Incompatible:
+		return false
+	}
+	_, err := matcher.CompilePCRE2Pattern(pr.OriginalRegex)
+	return err == nil
 }

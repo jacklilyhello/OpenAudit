@@ -12,6 +12,7 @@ import (
 
 	"github.com/openaudit/openaudit/internal/bundled"
 	"github.com/openaudit/openaudit/internal/config"
+	"github.com/openaudit/openaudit/internal/matcher"
 	"github.com/openaudit/openaudit/internal/model"
 	"github.com/openaudit/openaudit/internal/rules"
 )
@@ -111,7 +112,7 @@ func TestBundledPackRuleEnabledDoesNotOverrideConfig(t *testing.T) {
 func TestBundledIncompatibleSkippedAndPCRE2Mode(t *testing.T) {
 	local := t.TempDir()
 	dir := t.TempDir()
-	makePack(t, dir, "g79", `{"regex":{"shield":{"1":"okhit","2":"a(?=b)","3":"(?<=a)b","4":"(a)\\\\1"}},"settings":{}}`)
+	makePack(t, dir, "g79", `{"regex":{"shield":{"1":"okhit","2":"a(?=b)","3":"(?<=a)b","4":"(a)\\1"}},"settings":{}}`)
 	cfg := bundledCfg(dir)
 	e, err := NewWithOptions(local, Options{BundledRules: &cfg})
 	if err != nil {
@@ -121,7 +122,11 @@ func TestBundledIncompatibleSkippedAndPCRE2Mode(t *testing.T) {
 		t.Fatal("bad incompatible handling")
 	}
 	cfg.NetEase.Mode = "pcre2"
-	if _, err := NewWithOptions(local, Options{BundledRules: &cfg}); err == nil || !strings.Contains(err.Error(), "PCRE2 runtime support is not included") {
+	if matcher.PCRE2Available() {
+		if e, err := NewWithOptions(local, Options{BundledRules: &cfg}); err != nil || !e.Audit("ab", true).Matched || !e.Audit("aa", true).Matched {
+			t.Fatalf("expected pcre2-compatible rules to activate, engine=%v err=%v", e, err)
+		}
+	} else if _, err := NewWithOptions(local, Options{BundledRules: &cfg}); err == nil || !strings.Contains(err.Error(), "PCRE2 runtime support is not included") {
 		t.Fatalf("expected pcre2 unsupported, got %v", err)
 	}
 	cfg.NetEase.Enabled = false

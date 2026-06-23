@@ -6,7 +6,7 @@ BIN := $(BIN_DIR)/$(APP_NAME)
 IMAGE := openaudit:local
 GO_FILES := $(shell find . -name '*.go' -not -path './vendor/*')
 
-.PHONY: help fmt fmt-check vet test build run clean ci govulncheck gosec docker-build docker-run smoke e2e verify-bundled-netease regenerate-bundled-netease
+.PHONY: help fmt fmt-check vet test test-pcre2 build build-pcre2 run clean ci govulncheck gosec docker-build docker-run smoke e2e verify-bundled-netease regenerate-bundled-netease
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "OpenAudit development targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -26,6 +26,13 @@ test: ## Run tests
 build: ## Build OpenAudit binary into ./bin/openaudit
 	mkdir -p $(BIN_DIR)
 	go build -o $(BIN) ./cmd/server
+
+test-pcre2: ## Run optional PCRE2-tagged tests (requires CGO and libpcre2-8 development files)
+	CGO_ENABLED=1 go test -tags pcre2 ./...
+
+build-pcre2: ## Build optional PCRE2 binary (requires CGO and libpcre2-8 development files)
+	mkdir -p $(BIN_DIR)
+	CGO_ENABLED=1 go build -tags pcre2 -o $(BIN)-pcre2 ./cmd/server
 
 run: ## Run OpenAudit locally
 	go run ./cmd/server
