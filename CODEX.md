@@ -1172,3 +1172,22 @@ Files:
 Notes:
 - The workflow does not publish images, log in to registries, use secrets, or expose /admin.
 - Local Docker remains unavailable in the Codex container, so Docker verification is delegated to GitHub Actions.
+
+
+## Commit pending
+
+Date: 2026-06-24
+
+Summary:
+- Move Phase E Docker packaging verification into the existing CI workflow for PR #28 visibility.
+- Remove the standalone Docker Packaging workflow to avoid duplicate or confusing checks.
+- Keep Docker verification on Ubuntu runners using existing Makefile targets for default RE2 and optional PCRE2 images and smoke validation.
+
+Files:
+- .github/workflows/ci.yml
+- .github/workflows/docker-packaging.yml
+- CODEX.md
+
+Notes:
+- No secrets, registry login, image publishing, image pushing, or public /admin exposure are introduced.
+- Local Docker remains unavailable in the Codex container, so CI performs Docker verification.
