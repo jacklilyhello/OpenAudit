@@ -1127,3 +1127,31 @@ Files:
 
 Notes:
 - Default CI and default CGO-free builds remain independent of PCRE2.
+
+## Commit pending
+
+Date: 2026-06-24
+
+Summary:
+- Implement Phase E production packaging and runtime operations for bundled NetEase and optional PCRE2.
+- Add default RE2 and optional PCRE2 Docker targets, compose override, Makefile Docker smoke targets, config validation mode, and safe bundled summary diagnostics.
+- Extend bundled runtime stats with backend availability and successful reload timestamps without exposing raw patterns or rule content.
+- Add production operations documentation and configuration snippets for bundled NetEase dataset/group and regex-engine choices.
+
+Files:
+- Dockerfile
+- Makefile
+- docker-compose.pcre2.example.yml
+- config.bundled-rules.examples.yml
+- cmd/server/main.go
+- internal/bundled/runtime.go
+- internal/engine/engine.go
+- docs/production-runtime-ops.md
+- README.md
+- CHANGELOG.md
+- CODEX.md
+
+Notes:
+- Default builds remain RE2-only and CGO-free.
+- PCRE2 remains opt-in and requires CGO/libpcre2.
+- No NetEase data is regenerated or relicensed.

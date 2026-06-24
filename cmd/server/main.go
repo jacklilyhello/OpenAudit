@@ -6,15 +6,18 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openaudit/openaudit/internal/admin"
 	"github.com/openaudit/openaudit/internal/ai"
 	"github.com/openaudit/openaudit/internal/api"
+	"github.com/openaudit/openaudit/internal/bundled"
 	"github.com/openaudit/openaudit/internal/config"
 	"github.com/openaudit/openaudit/internal/engine"
 	"github.com/openaudit/openaudit/internal/logstore"
+	"github.com/openaudit/openaudit/internal/matcher"
 	"github.com/openaudit/openaudit/internal/review"
 	"github.com/openaudit/openaudit/internal/rulehistory"
 	"github.com/openaudit/openaudit/internal/security"
@@ -24,6 +27,8 @@ import (
 
 func main() {
 	configPath := flag.String("config", "", "config file path")
+	validateConfig := flag.Bool("validate-config", false, "validate configuration and bundled-rule runtime compatibility, then exit")
+	printBundledSummary := flag.Bool("print-bundled-summary", false, "print safe bundled-rule runtime summary, then exit")
 	flag.Parse()
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -31,6 +36,22 @@ func main() {
 	}
 	if cfg.UnsafeProduction && cfg.App.Env == "production" {
 		log.Printf("WARNING: OPENAUDIT_ALLOW_UNSAFE_PRODUCTION=true disables production safety checks")
+	}
+	if *validateConfig || *printBundledSummary {
+		if *printBundledSummary {
+			_, stats, err := bundled.LoadRuntime(cfg.BundledRules)
+			if err != nil {
+				log.Fatalf("bundled rules: %v", err)
+			}
+			if err := json.NewEncoder(os.Stdout).Encode(stats); err != nil {
+				log.Fatalf("print bundled summary: %v", err)
+			}
+		}
+		if cfg.BundledRules.NetEase.RegexEngine == matcher.RegexEnginePCRE2 && !matcher.PCRE2Available() {
+			log.Fatalf("bundled_rules.netease.regex_engine pcre2 requires a PCRE2-enabled binary built with CGO_ENABLED=1 -tags pcre2")
+		}
+		log.Printf("configuration valid; regex_engine=%s pcre2_available=%t", cfg.BundledRules.NetEase.RegexEngine, matcher.PCRE2Available())
+		return
 	}
 	e, err := engine.NewWithOptions(cfg.Rules.DataDir, engine.Options{BundledRules: &cfg.BundledRules})
 	if err != nil {

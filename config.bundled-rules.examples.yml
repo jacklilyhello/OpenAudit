@@ -1,0 +1,93 @@
+# Bundled NetEase runtime configuration snippets. Defaults remain conservative:
+# bundled rules are disabled, NetEase is disabled, and RE2 is selected.
+
+all_bundled_rules_disabled:
+  bundled_rules:
+    enabled: false
+    data_dir: ./data/bundled
+    netease:
+      enabled: false
+      regex_engine: re2
+      datasets: {g79: false, x19: false}
+      groups: {shield: true, intercept: true, replace: false, nickname: false, remind: false}
+
+bundled_enabled_netease_disabled:
+  bundled_rules:
+    enabled: true
+    data_dir: ./data/bundled
+    netease:
+      enabled: false
+      regex_engine: re2
+      datasets: {g79: false, x19: false}
+      groups: {shield: true, intercept: true, replace: false, nickname: false, remind: false}
+
+netease_enabled_datasets_disabled:
+  bundled_rules:
+    enabled: true
+    data_dir: ./data/bundled
+    netease:
+      enabled: true
+      regex_engine: re2
+      datasets: {g79: false, x19: false}
+      groups: {shield: true, intercept: true, replace: false, nickname: false, remind: false}
+
+netease_g79_only:
+  bundled_rules:
+    enabled: true
+    data_dir: ./data/bundled
+    netease:
+      enabled: true
+      regex_engine: re2
+      datasets: {g79: true, x19: false}
+      groups: {shield: true, intercept: true, replace: false, nickname: false, remind: false}
+
+netease_x19_only:
+  bundled_rules:
+    enabled: true
+    data_dir: ./data/bundled
+    netease:
+      enabled: true
+      regex_engine: re2
+      datasets: {g79: false, x19: true}
+      groups: {shield: true, intercept: true, replace: false, nickname: false, remind: false}
+
+netease_g79_and_x19:
+  bundled_rules:
+    enabled: true
+    data_dir: ./data/bundled
+    netease:
+      enabled: true
+      regex_engine: re2
+      datasets: {g79: true, x19: true}
+      groups: {shield: true, intercept: true, replace: false, nickname: false, remind: false}
+
+shield_intercept_only:
+  bundled_rules:
+    enabled: true
+    data_dir: ./data/bundled
+    netease:
+      enabled: true
+      regex_engine: re2
+      datasets: {g79: true, x19: true}
+      groups: {shield: true, intercept: true, replace: false, nickname: false, remind: false}
+
+replace_nickname_remind_opt_in:
+  bundled_rules:
+    enabled: true
+    data_dir: ./data/bundled
+    netease:
+      enabled: true
+      regex_engine: re2
+      datasets: {g79: true, x19: true}
+      groups: {shield: true, intercept: true, replace: true, nickname: true, remind: true}
+
+regex_engine_re2:
+  bundled_rules:
+    netease:
+      regex_engine: re2
+
+regex_engine_pcre2:
+  # Requires a PCRE2-enabled binary/image built with CGO_ENABLED=1 and -tags pcre2.
+  bundled_rules:
+    netease:
+      regex_engine: pcre2

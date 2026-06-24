@@ -1,0 +1,8 @@
+# Optional PCRE2 compose override. Use only with configs that set
+# bundled_rules.netease.regex_engine: pcre2.
+services:
+  openaudit:
+    build:
+      context: .
+      target: pcre2
+    image: openaudit:pcre2-production

@@ -1,6 +1,10 @@
 package engine
 
 import (
+	"sort"
+	"strconv"
+	"sync"
+
 	"github.com/openaudit/openaudit/internal/bundled"
 	"github.com/openaudit/openaudit/internal/config"
 	"github.com/openaudit/openaudit/internal/matcher"
@@ -9,9 +13,6 @@ import (
 	"github.com/openaudit/openaudit/internal/risk"
 	"github.com/openaudit/openaudit/internal/rules"
 	"github.com/openaudit/openaudit/internal/variant"
-	"sort"
-	"strconv"
-	"sync"
 )
 
 type Engine struct {

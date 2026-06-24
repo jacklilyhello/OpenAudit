@@ -94,3 +94,32 @@ OpenAudit is an early self-hosted project. See [CHANGELOG.md](CHANGELOG.md) for 
 ## NetEase bundled rules (Phase A/B/C/D)
 
 OpenAudit includes default-disabled, local-only NetEase bundled rule support. Phase A provides deterministic Pack generation and reports, Phase B loads local Packs at runtime, Phase C pins real G79/X19 artifacts with the GPL data boundary, and Phase D adds optional PCRE2 runtime support behind an explicit `bundled_rules.netease.regex_engine: pcre2` setting. RE2 remains the default backend and default builds remain CGO-free; PCRE2 builds require `CGO_ENABLED=1`, `-tags pcre2`, and the system `libpcre2-8` development package. No complete upstream database download occurs at runtime, no automatic network updates are performed, and Docker/release images remain default RE2 unless explicitly rebuilt. See `docs/bundled-rules-phase-a.md`, `docs/bundled-rules-phase-b-runtime.md`, and `docs/bundled-rules-phase-c-netease.md`.
+
+## Production bundled NetEase operations
+
+The production default remains RE2-only, `CGO_ENABLED=0`, and bundled NetEase disabled. Build it with:
+
+```sh
+make docker-build
+CGO_ENABLED=0 go build ./...
+```
+
+Optional PCRE2 support is opt-in and requires a PCRE2-enabled binary/image built with CGO and `-tags pcre2`:
+
+```sh
+make docker-build-pcre2
+CGO_ENABLED=1 go build -tags pcre2 ./...
+```
+
+Use `config.bundled-rules.examples.yml` for examples enabling no bundled rules, NetEase without datasets, G79 only, X19 only, both datasets, Shield/Intercept only, Replace/Nickname/Remind opt-in, `regex_engine: re2`, and `regex_engine: pcre2`. PCRE2 configs fail clearly when the current binary lacks PCRE2 support.
+
+Operator checks:
+
+```sh
+go run ./cmd/server --config config.example.yml --validate-config
+go run ./cmd/server --config config.example.yml --print-bundled-summary
+make verify-bundled-netease
+curl -H "X-API-Key: $OPENAUDIT_ADMIN_API_KEY" http://127.0.0.1:8080/rules/stats
+```
+
+Bundled runtime stats avoid raw regex patterns and offensive rule content while reporting provider/dataset enablement, selected regex engine, backend availability, compatibility counts, activated/skipped counts, safe pack hashes, and successful reload timestamps. See `docs/production-runtime-ops.md` for Docker, Compose, PCRE2, GPL/MIT data-boundary, and security guidance.
