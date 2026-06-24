@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/openaudit/openaudit/internal/config"
 	"github.com/openaudit/openaudit/internal/matcher"
@@ -31,6 +32,8 @@ type ProviderRuntimeStats struct {
 	Groups                         map[string]int          `json:"groups"`
 	TotalPackRulesExamined         int                     `json:"total_pack_rules_examined"`
 	RegexEngine                    string                  `json:"regex_engine"`
+	RegexBackendAvailable          bool                    `json:"regex_backend_available"`
+	LastReloadSuccessAt            string                  `json:"last_reload_success_at,omitempty"`
 	ActivatedRules                 int                     `json:"activated_rules"`
 	ConfigurationDisabledRules     int                     `json:"configuration_disabled_rules"`
 	BackendUnavailableSkippedRules int                     `json:"backend_unavailable_skipped_rules"`
@@ -61,13 +64,14 @@ type DatasetStats struct {
 func LoadRuntime(cfg config.BundledRulesConfig) ([]rules.Rule, RuntimeStats, error) {
 	st := RuntimeStats{Providers: map[string]ProviderRuntimeStats{}}
 	engine := effectiveRegexEngine(cfg)
-	ps := ProviderRuntimeStats{Enabled: cfg.Enabled && cfg.NetEase.Enabled, Mode: cfg.NetEase.Mode, RegexEngine: engine, Status: "disabled", Datasets: datasetEnabled(cfg), Groups: emptyGroups(), IncompatibleCompatibilityHint: map[string]int{}}
+	ps := ProviderRuntimeStats{Enabled: cfg.Enabled && cfg.NetEase.Enabled, Mode: cfg.NetEase.Mode, RegexEngine: engine, RegexBackendAvailable: engine == matcher.RegexEngineRE2 || matcher.PCRE2Available(), Status: "disabled", Datasets: datasetEnabled(cfg), Groups: emptyGroups(), IncompatibleCompatibilityHint: map[string]int{}}
 	st.Providers[ProviderNetEase] = ps
 	if !cfg.Enabled || !cfg.NetEase.Enabled {
 		return nil, st, nil
 	}
 	ps.Status = "enabled"
 	if engine == matcher.RegexEnginePCRE2 && !matcher.PCRE2Available() {
+		ps.RegexBackendAvailable = false
 		st.Providers[ProviderNetEase] = ps
 		return nil, st, errors.New("bundled_rules.netease.regex_engine pcre2 is unsupported: PCRE2 runtime support is not included in this build")
 	}
@@ -158,6 +162,7 @@ func LoadRuntime(cfg config.BundledRulesConfig) ([]rules.Rule, RuntimeStats, err
 	if len(ps.IncompatibleCompatibilityHint) == 0 {
 		ps.IncompatibleCompatibilityHint = nil
 	}
+	ps.LastReloadSuccessAt = time.Now().UTC().Format(time.RFC3339)
 	st.Providers[ProviderNetEase] = ps
 	return out, st, nil
 }

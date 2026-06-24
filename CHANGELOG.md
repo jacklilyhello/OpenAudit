@@ -33,3 +33,11 @@ Release-note style changes for OpenAudit. For detailed historical implementation
 - Document expected `netease-g79.json.gz` / `netease-x19.json.gz` filenames, RE2 partial compatibility, unsupported PCRE2 runtime mode, failure semantics, and GPL/operator distribution scope.
 
 - Add Phase A foundation for default-disabled NetEase bundled rule conversion, deterministic internal packs, machine-readable import reports, and local validation CLI. Runtime loading and PCRE2 matching are deferred.
+
+## Unreleased - Phase E production packaging and runtime operations
+
+- Added Docker targets for default RE2/CGO-free and optional PCRE2/CGO builds.
+- Added Makefile Docker build/smoke targets and a PCRE2 compose override example.
+- Added server validation/diagnostic flags for config validation and safe bundled-rule summaries.
+- Extended bundled runtime stats with regex backend availability and successful reload timestamps.
+- Added production runtime operations documentation and bundled NetEase configuration snippets.
