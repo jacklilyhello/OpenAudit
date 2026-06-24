@@ -18,6 +18,7 @@ Release-note style changes for OpenAudit. For detailed historical implementation
 - Production hardening for environment modes, management API protection, admin exposure safeguards, production-safe logging defaults, and Cloudflare Access/Tunnel deployment guidance.
 - Security scanning baseline with CI format/vet/test/build/smoke checks, blocking gosec release gate, govulncheck, CodeQL, and documented safepath/SQL invariants.
 - Deterministic E2E validation through `scripts/e2e.sh` and `make e2e` for manual release validation.
+- Release-readiness infrastructure with build-time version metadata, `--version`, local `build-all`/`release-check`/`snapshot` targets, pull-request release dry runs, and tag-triggered GitHub Release/GHCR publishing workflows.
 
 ### Security
 

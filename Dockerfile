@@ -11,7 +11,7 @@ ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_TIME=unknown
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags "-s -w -X github.com/openaudit/openaudit/internal/api.Version=${VERSION} -X github.com/openaudit/openaudit/internal/api.Commit=${COMMIT} -X github.com/openaudit/openaudit/internal/api.BuildTime=${BUILD_TIME}" \
+    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_TIME}" \
     -o /out/openaudit ./cmd/server
 
 FROM golang:1.25.11-alpine AS build-pcre2
@@ -25,7 +25,7 @@ ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_TIME=unknown
 RUN CGO_ENABLED=1 GOOS=linux go build -tags pcre2 \
-    -ldflags "-s -w -X github.com/openaudit/openaudit/internal/api.Version=${VERSION} -X github.com/openaudit/openaudit/internal/api.Commit=${COMMIT} -X github.com/openaudit/openaudit/internal/api.BuildTime=${BUILD_TIME}" \
+    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_TIME}" \
     -o /out/openaudit ./cmd/server
 
 FROM alpine:3.20 AS default
