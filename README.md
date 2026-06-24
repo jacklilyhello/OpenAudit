@@ -45,9 +45,11 @@ Run release-oriented local checks:
 ```bash
 make smoke
 make e2e
+make release-check
 ```
 
 `make smoke` starts the service and performs a basic API smoke test. `make e2e` runs deterministic end-to-end release validation with `scripts/e2e.sh`.
+Build metadata is available with `go run ./cmd/server --version`.
 
 ## Configuration
 
@@ -79,6 +81,7 @@ Use Cloudflare Access, Cloudflare Tunnel, and a localhost origin. Do not point a
 - [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md) — phase-by-phase implementation history.
 - [CHANGELOG.md](CHANGELOG.md) — release-note style summary of completed user-facing changes.
 - [ROADMAP.md](ROADMAP.md) — future-facing roadmap.
+- [docs/release.md](docs/release.md) — release tags, binary artifacts, SHA256SUMS, GHCR images, and PCRE2 distribution notes.
 
 ## Security and CI summary
 
@@ -123,3 +126,7 @@ curl -H "X-API-Key: $OPENAUDIT_ADMIN_API_KEY" http://127.0.0.1:8080/rules/stats
 ```
 
 Bundled runtime stats avoid raw regex patterns and offensive rule content while reporting provider/dataset enablement, selected regex engine, backend availability, compatibility counts, activated/skipped counts, safe pack hashes, and successful reload timestamps. See `docs/production-runtime-ops.md` for Docker, Compose, PCRE2, GPL/MIT data-boundary, and security guidance.
+
+## Release distribution
+
+Versioned releases are tag-triggered from `v*` tags. Default binary artifacts use RE2/Go regexp and are built for Linux, macOS, and Windows without requiring CGO. Optional PCRE2 distribution is Docker-first because native cross-compilation requires CGO, libpcre2, and platform toolchains. See [docs/release.md](docs/release.md) for release creation, SHA256 verification, GHCR pull/run commands, Docker tag strategy, and the bundled NetEase GPL/MIT data boundary.

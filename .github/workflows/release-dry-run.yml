@@ -1,0 +1,34 @@
+name: Release dry run
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  release-dry-run:
+    name: Release dry run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.11"
+          cache: true
+
+      - name: Run release validation
+        run: make release-check VERSION=${{ github.event.pull_request.head.sha }} COMMIT=${{ github.event.pull_request.head.sha }} DATE=1970-01-01T00:00:00Z
+
+      - name: Create local release snapshot
+        run: make snapshot VERSION=${{ github.event.pull_request.head.sha }} COMMIT=${{ github.event.pull_request.head.sha }} DATE=1970-01-01T00:00:00Z
+
+      - name: Verify default Docker image build
+        run: make docker-build
+
+      - name: Verify optional PCRE2 Docker image build
+        run: make docker-build-pcre2

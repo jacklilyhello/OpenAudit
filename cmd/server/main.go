@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,11 +27,27 @@ import (
 	storagesqlite "github.com/openaudit/openaudit/internal/storage/sqlite"
 )
 
+var version = "dev"
+var commit = "unknown"
+var date = "unknown"
+
+func printVersion() {
+	fmt.Fprintf(os.Stdout, "OpenAudit version=%s commit=%s date=%s go=%s regex_backends=re2:available,pcre2:%t\n", version, commit, date, runtime.Version(), matcher.PCRE2Available())
+}
+
 func main() {
 	configPath := flag.String("config", "", "config file path")
 	validateConfig := flag.Bool("validate-config", false, "validate configuration and bundled-rule runtime compatibility, then exit")
 	printBundledSummary := flag.Bool("print-bundled-summary", false, "print safe bundled-rule runtime summary, then exit")
+	versionFlag := flag.Bool("version", false, "print build version metadata and exit")
 	flag.Parse()
+	api.Version = version
+	api.Commit = commit
+	api.BuildTime = date
+	if *versionFlag {
+		printVersion()
+		return
+	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
