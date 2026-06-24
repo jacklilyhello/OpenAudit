@@ -1,0 +1,29 @@
+name: Docker Packaging
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-packaging:
+    name: Default and PCRE2 Docker images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build default RE2 image
+        run: make docker-build
+
+      - name: Smoke test default RE2 image
+        run: make docker-smoke
+
+      - name: Build optional PCRE2 image
+        run: make docker-build-pcre2
+
+      - name: Smoke test optional PCRE2 image
+        run: make docker-smoke-pcre2

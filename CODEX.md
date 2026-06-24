@@ -1155,3 +1155,20 @@ Notes:
 - Default builds remain RE2-only and CGO-free.
 - PCRE2 remains opt-in and requires CGO/libpcre2.
 - No NetEase data is regenerated or relicensed.
+
+## Commit pending
+
+Date: 2026-06-24
+
+Summary:
+- Fix PR #28 Phase E follow-up by adding Docker Packaging GitHub Actions coverage.
+- Verify both default RE2 and optional PCRE2 Docker image builds and validation smoke targets on Ubuntu runners with Docker available.
+- Correct PR metadata through the PR update flow instead of creating a new PR.
+
+Files:
+- .github/workflows/docker-packaging.yml
+- CODEX.md
+
+Notes:
+- The workflow does not publish images, log in to registries, use secrets, or expose /admin.
+- Local Docker remains unavailable in the Codex container, so Docker verification is delegated to GitHub Actions.
